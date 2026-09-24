@@ -1,0 +1,33 @@
+from app.models.entities import (
+    Channel,
+    Contact,
+    Conversation,
+    ConversationStatus,
+    ConversationTag,
+    Message,
+    MessageDirection,
+    SenderType,
+    Tag,
+    User,
+    UserRole,
+    AssistantRole,
+    AssistantThread,
+    AssistantMessage,
+)
+
+__all__ = [
+    "Channel",
+    "Contact",
+    "Conversation",
+    "ConversationStatus",
+    "ConversationTag",
+    "Message",
+    "MessageDirection",
+    "SenderType",
+    "Tag",
+    "User",
+    "UserRole",
+    "AssistantRole",
+    "AssistantThread",
+    "AssistantMessage",
+]

@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: conversa-postgres
+    environment:
+      POSTGRES_USER: conversa
+      POSTGRES_PASSWORD: conversa
+      POSTGRES_DB: conversa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conversa -d conversa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: conversa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conversa-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://conversa:conversa@postgres:5432/conversa
+      REDIS_URL: redis://redis:6379/0
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      YCLOUD_API_KEY: ${YCLOUD_API_KEY:-}
+      YCLOUD_FROM_NUMBER: ${YCLOUD_FROM_NUMBER:-}
+      YCLOUD_WEBHOOK_SECRET: ${YCLOUD_WEBHOOK_SECRET:-}
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      JWT_SECRET: ${JWT_SECRET:-conversa-dev-cambiar}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@circulo.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-circulo}
+      ADMIN_NAME: ${ADMIN_NAME:-Administración}
+      CONSEJO_EMAIL: ${CONSEJO_EMAIL:-consejo@circulo.local}
+      CONSEJO_PASSWORD: ${CONSEJO_PASSWORD:-consejo-circulo}
+      CONSEJO_NAME: ${CONSEJO_NAME:-Consejo}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: conversa-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
+  redis_data:

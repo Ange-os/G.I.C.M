@@ -1,0 +1,50 @@
+# Entorno y secretos. .env.example sí se versiona: es la plantilla sin claves reales.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+
+# Claves, certificados y credenciales
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+credentials.json
+service-account*.json
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Builds
+dist/
+build/
+frontend/dist/
+
+# Node
+node_modules/
+
+# Datos locales y logs (pueden guardar sesiones o tokens)
+*.sqlite
+*.sqlite3
+*.db
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db

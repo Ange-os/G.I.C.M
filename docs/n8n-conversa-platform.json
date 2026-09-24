@@ -1,0 +1,341 @@
+{
+  "name": "Conversa Platform - WhatsApp Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "conversa-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-conversa",
+      "name": "Webhook Conversa Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "conversa-events"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [420, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "evt-cond",
+              "leftValue": "={{ $json.body.event || $json.event }}",
+              "rightValue": "conversation.message.created",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-message-created",
+      "name": "¿Mensaje entrante?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bot-off-cond",
+              "leftValue": "={{ JSON.stringify($json.body.conversation?.tags || $json.conversation?.tags || []) }}",
+              "rightValue": "bot-apagado",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-bot-activo",
+      "name": "¿Bot activo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "user-msg",
+              "name": "userMessage",
+              "value": "={{ $json.body.message?.content || $json.message?.content }}",
+              "type": "string"
+            },
+            {
+              "id": "phone",
+              "name": "phoneId",
+              "value": "={{ $json.body.contact?.phone || $json.contact?.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "conv-id",
+              "name": "conversation_id",
+              "value": "={{ $json.body.conversation?.id || $json.conversation?.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-fields",
+      "name": "Extraer datos evento",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nconst phoneId = $input.first().json.phoneId;\nconst key = 'history_' + phoneId;\nconst history = store[key] || [];\nreturn [{ json: { ...$input.first().json, history } }];"
+      },
+      "id": "leer-historial",
+      "name": "Leer historial",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const SYSTEM_PROMPT = `Eres un asistente de ventas amable para una tienda online de camisetas.\nAyudas con consultas de productos, talles, precios y pedidos.\nRespuestas cortas para WhatsApp (máx 2 párrafos).\nSi piden hablar con una persona, decí que los conectás con un asesor.`;\n\nconst data = $input.first().json;\nconst history = data.history || [];\nconst userMessage = data.userMessage;\n\nconst messages = [\n  ...history,\n  { role: 'user', content: userMessage }\n];\n\nreturn [{ json: { ...data, systemPrompt: SYSTEM_PROMPT, messages } }];"
+      },
+      "id": "armar-prompt",
+      "name": "Armar prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cohere.com/v2/chat",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"command-a-03-2025\",\n  \"messages\": {{ JSON.stringify([\n    {\"role\": \"system\", \"content\": $json.systemPrompt},\n    ...$json.messages.filter(m => m.content && m.content !== '')\n  ]) }},\n  \"max_tokens\": 600,\n  \"temperature\": 0.3\n}",
+        "options": {}
+      },
+      "id": "cohere",
+      "name": "Cohere",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_COHERE",
+          "name": "cohere key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Armar prompt').first().json;\nconst cohereResponse = $('Cohere').first().json;\n\nlet botReply = '';\ntry {\n  botReply = cohereResponse.message.content[0].text || 'No pude procesar tu consulta.';\n} catch (e) {\n  botReply = 'Hubo un error. Intentá de nuevo.';\n}\n\nbotReply = botReply.replace(/###\\s*/g, '').replace(/##\\s*/g, '').replace(/#\\s*/g, '').trim();\nif (botReply.length > 1600) botReply = botReply.substring(0, 1550) + '...';\n\nconst store = $getWorkflowStaticData('global');\nconst key = 'history_' + ctx.phoneId;\nconst history = ctx.history || [];\nhistory.push({ role: 'user', content: ctx.userMessage });\nhistory.push({ role: 'assistant', content: botReply });\nstore[key] = history.slice(-12);\n\nconst wantsHuman = /humano|persona|asesor|operador/i.test(ctx.userMessage);\n\nreturn [{\n  json: {\n    conversation_id: ctx.conversation_id,\n    botReply,\n    wantsHuman\n  }\n}];"
+      },
+      "id": "procesar-respuesta",
+      "name": "Procesar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ninety-colts-accept.loca.lt/webhooks/n8n/inbound",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-N8N-API-Key",
+              "value": "conversa-n8n-local-2026"
+            },
+            {
+              "name": "Bypass-Tunnel-Reminder",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"message\": {\n    \"sender_type\": \"bot\",\n    \"content\": {{ JSON.stringify($json.botReply) }}\n  },\n  \"send_whatsapp\": true\n}",
+        "options": {}
+      },
+      "id": "enviar-respuesta-conversa",
+      "name": "Enviar respuesta a Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1960, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ninety-colts-accept.loca.lt/webhooks/n8n/inbound",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-N8N-API-Key",
+              "value": "conversa-n8n-local-2026"
+            },
+            {
+              "name": "Bypass-Tunnel-Reminder",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"tags\": { \"add\": [\"bot-apagado\"], \"remove\": [\"bot-activo\"] },\n  \"status\": \"pending_human\",\n  \"message\": {\n    \"sender_type\": \"bot\",\n    \"content\": \"Te conecto con un asesor humano. En breve te atienden.\"\n  },\n  \"send_whatsapp\": true\n}",
+        "options": {}
+      },
+      "id": "derivar-humano",
+      "name": "Derivar a humano",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1960, 520]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "human-cond",
+              "leftValue": "={{ $json.wantsHuman }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-wants-human",
+      "name": "¿Pide humano?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1960, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Conversa Events": {
+      "main": [
+        [
+          { "node": "Responder OK", "type": "main", "index": 0 },
+          { "node": "¿Mensaje entrante?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "¿Mensaje entrante?": {
+      "main": [
+        [{ "node": "¿Bot activo?", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "¿Bot activo?": {
+      "main": [
+        [{ "node": "Extraer datos evento", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Extraer datos evento": {
+      "main": [
+        [{ "node": "Leer historial", "type": "main", "index": 0 }]
+      ]
+    },
+    "Leer historial": {
+      "main": [
+        [{ "node": "Armar prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Armar prompt": {
+      "main": [
+        [{ "node": "Cohere", "type": "main", "index": 0 }]
+      ]
+    },
+    "Cohere": {
+      "main": [
+        [{ "node": "Procesar respuesta", "type": "main", "index": 0 }]
+      ]
+    },
+    "Procesar respuesta": {
+      "main": [
+        [{ "node": "¿Pide humano?", "type": "main", "index": 0 }]
+      ]
+    },
+    "¿Pide humano?": {
+      "main": [
+        [{ "node": "Derivar a humano", "type": "main", "index": 0 }],
+        [{ "node": "Enviar respuesta a Conversa", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
