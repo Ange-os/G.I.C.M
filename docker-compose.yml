@@ -40,7 +40,7 @@ services:
       YCLOUD_API_KEY: ${YCLOUD_API_KEY:-}
       YCLOUD_FROM_NUMBER: ${YCLOUD_FROM_NUMBER:-}
       YCLOUD_WEBHOOK_SECRET: ${YCLOUD_WEBHOOK_SECRET:-}
-      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      CORS_ORIGINS: https://gai.xia.ar,http://localhost:5173,http://127.0.0.1:5173
       JWT_SECRET: ${JWT_SECRET:-conversa-dev-cambiar}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@circulo.local}
@@ -75,7 +75,7 @@ services:
     ports:
       - "127.0.0.1:5174:5173"
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: https://gai-api.xia.ar
     depends_on:
       - api
     volumes:
