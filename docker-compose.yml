@@ -6,8 +6,6 @@ services:
       POSTGRES_USER: conversa
       POSTGRES_PASSWORD: conversa
       POSTGRES_DB: conversa
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +17,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: conversa-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -35,7 +31,7 @@ services:
       dockerfile: Dockerfile
     container_name: conversa-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8010:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://conversa:conversa@postgres:5432/conversa
       REDIS_URL: redis://redis:6379/0
@@ -77,7 +73,7 @@ services:
       dockerfile: Dockerfile
     container_name: conversa-frontend
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5174:5173"
     environment:
       VITE_API_URL: http://localhost:8000
     depends_on:
