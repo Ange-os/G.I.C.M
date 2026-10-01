@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, async_session, engine
+from app.domain.seed import seed_domain_demo
+from app.models import domain as _domain_models  # noqa: F401 — registra tablas en metadata
 from app.routers import assistant, auth, conversations, tools, webhooks_n8n, webhooks_ycloud
 from app.services.conversation import seed_default_tags
 from app.services.users import seed_default_users
@@ -19,6 +21,7 @@ async def lifespan(_: FastAPI):
     async with async_session() as session:
         await seed_default_tags(session)
         await seed_default_users(session)
+        await seed_domain_demo(session)
         await session.commit()
 
     try:

@@ -179,17 +179,43 @@ export interface AssistantThread {
   updated_at: string;
 }
 
+export interface ActionProposal {
+  id: string;
+  thread_id: string;
+  message_id: string | null;
+  action: string;
+  title: string;
+  summary: string;
+  status:
+    | "awaiting_confirmation"
+    | "confirmed"
+    | "executing"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "expired";
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error_message: string | null;
+  requires_confirmation: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AssistantMessage {
   id: string;
   thread_id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  action?: ActionProposal | null;
 }
 
 export interface AssistantStatus {
   configured: boolean;
   model: string;
+  domain_data_source?: string;
+  agent_enabled?: boolean;
 }
 
 export interface AssistantSendResponse {
@@ -197,10 +223,28 @@ export interface AssistantSendResponse {
   messages: AssistantMessage[];
 }
 
+export interface ActionConfirmResponse {
+  proposal: ActionProposal;
+  message: AssistantMessage;
+  messages: AssistantMessage[];
+}
+
 const ASSISTANT_TIMEOUT_MS = 120000;
+
+export interface CatalogAction {
+  id: string;
+  title: string;
+  description: string;
+  starter_message: string;
+  category: "action" | "query" | string;
+}
 
 export function fetchAssistantStatus() {
   return apiGet<AssistantStatus>("/assistant/status");
+}
+
+export function fetchActionsCatalog() {
+  return apiGet<CatalogAction[]>("/assistant/actions-catalog");
 }
 
 export function fetchAssistantThreads() {
@@ -221,6 +265,21 @@ export function sendAssistantMessage(threadId: string, content: string) {
     { content },
     ASSISTANT_TIMEOUT_MS,
   );
+}
+
+export function confirmAssistantAction(
+  proposalId: string,
+  body?: { to?: string; subject?: string; body?: string },
+) {
+  return apiPost<ActionConfirmResponse>(
+    `/assistant/actions/${proposalId}/confirm`,
+    body || {},
+    60000,
+  );
+}
+
+export function cancelAssistantAction(proposalId: string) {
+  return apiPost<{ proposal: ActionProposal }>(`/assistant/actions/${proposalId}/cancel`);
 }
 
 export interface PdfTextResult {

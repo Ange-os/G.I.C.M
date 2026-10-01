@@ -5,9 +5,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.assistant.agent import run_agent_turn
+from app.assistant.proposals import list_proposals_for_messages
+from app.models.domain import ActionProposal
 from app.models.entities import AssistantMessage, AssistantRole, AssistantThread, Message, User
 from app.services.conversation import list_conversations
-from app.services.deepseek import complete_chat
 
 CONTEXT_CONVERSATIONS = 20
 CONTEXT_MESSAGES = 6
@@ -69,6 +71,15 @@ async def list_messages(db: AsyncSession, thread_id: UUID) -> list[AssistantMess
     return list(result.all())
 
 
+async def messages_with_actions(
+    db: AsyncSession,
+    thread_id: UUID,
+) -> tuple[list[AssistantMessage], dict[UUID, ActionProposal]]:
+    messages = await list_messages(db, thread_id)
+    proposals = await list_proposals_for_messages(db, [m.id for m in messages])
+    return messages, proposals
+
+
 async def build_inbox_context(db: AsyncSession) -> str:
     conversations = await list_conversations(db, limit=CONTEXT_CONVERSATIONS)
     if not conversations:
@@ -128,31 +139,12 @@ def _attended_by(conversation) -> str:
     return ""
 
 
-def _system_prompt(context: str) -> str:
-    return (
-        "Sos un compañero de administración de un círculo médico. "
-        "Hablás en español rioplatense, con frases cortas, como se lo explicarías a alguien del mostrador. "
-        "Respondé la pregunta y nada más. Sin títulos, sin viñetas y sin repetir el formato de los datos. "
-        "No menciones códigos, ids, etiquetas ni palabras como recorte, bot-activo, bot-apagado, contact o system. "
-        "Si el bot atiende la conversación, decí «la está atendiendo el bot». "
-        "Si la tomó el equipo, decí «la tomó alguien del equipo». "
-        "Una nota interna no es un mensaje de la persona: si preguntan por el último mensaje, "
-        "priorizá lo que escribió la persona, el bot o el equipo, y mencioná la nota interna solo si cambia el sentido. "
-        "Si no hay nombre, usá el teléfono. "
-        "Si el dato no está en la información de abajo, decilo con naturalidad. "
-        "No inventes deudas, expedientes ni datos de socios. "
-        "La información de abajo son las conversaciones más recientes, no todo el historial. "
-        "No redactes un WhatsApp salvo que te lo pidan.\n\n"
-        f"Información del inbox:\n{context}"
-    )
-
-
 async def send_message(
     db: AsyncSession,
     user: User,
     thread_id: UUID,
     content: str,
-) -> tuple[AssistantThread, list[AssistantMessage]]:
+) -> tuple[AssistantThread, list[AssistantMessage], ActionProposal | None]:
     thread = await get_thread(db, user, thread_id)
     if not thread:
         raise LookupError("Conversación del asistente no encontrada")
@@ -169,20 +161,26 @@ async def send_message(
         thread.title = text.split("\n", 1)[0][:80]
     await db.flush()
 
-    context = await build_inbox_context(db)
-    history = await list_messages(db, thread.id)
-    payload: list[dict[str, str]] = [{"role": "system", "content": _system_prompt(context)}]
-    for message in history[-HISTORY_MESSAGES:]:
-        payload.append({"role": message.role.value, "content": message.content})
+    history_rows = await list_messages(db, thread.id)
+    history: list[dict[str, str]] = []
+    for message in history_rows[-HISTORY_MESSAGES:]:
+        history.append({"role": message.role.value, "content": message.content})
 
-    reply = await complete_chat(payload)
-    db.add(
-        AssistantMessage(
-            thread_id=thread.id,
-            role=AssistantRole.ASSISTANT,
-            content=reply,
-        )
+    reply, proposal = await run_agent_turn(db, user, thread.id, history)
+
+    assistant_message = AssistantMessage(
+        thread_id=thread.id,
+        role=AssistantRole.ASSISTANT,
+        content=reply,
     )
+    db.add(assistant_message)
+    await db.flush()
+
+    if proposal:
+        proposal.message_id = assistant_message.id
+        await db.flush()
+
     thread.updated_at = datetime.now(timezone.utc)
     await db.flush()
-    return thread, await list_messages(db, thread.id)
+    messages = await list_messages(db, thread.id)
+    return thread, messages, proposal

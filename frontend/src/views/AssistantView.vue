@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
+import ActionCard from "../components/ActionCard.vue";
 import {
   type AssistantMessage,
   type AssistantStatus,
@@ -11,6 +12,11 @@ import {
   sendAssistantMessage,
 } from "../api/client";
 
+const emit = defineEmits<{
+  busyChange: [busy: boolean];
+  actionChange: [actionId: string | null];
+}>();
+
 const status = ref<AssistantStatus | null>(null);
 const threads = ref<AssistantThread[]>([]);
 const messages = ref<AssistantMessage[]>([]);
@@ -20,6 +26,7 @@ const loading = ref(true);
 const sending = ref(false);
 const error = ref<string | null>(null);
 const threadRef = ref<HTMLElement | null>(null);
+const activeActionId = ref<string | null>(null);
 
 async function scrollToBottom() {
   await nextTick();
@@ -44,22 +51,23 @@ function startNew() {
   messages.value = [];
   error.value = null;
   draft.value = "";
+  activeActionId.value = null;
 }
 
-async function submit() {
-  const content = draft.value.trim();
-  if (!content || sending.value) return;
+async function sendContent(content: string, options?: { freshThread?: boolean }) {
+  const text = content.trim();
+  if (!text || sending.value) return;
   sending.value = true;
   error.value = null;
   try {
-    let threadId = activeId.value;
+    let threadId = options?.freshThread ? null : activeId.value;
     if (!threadId) {
       const thread = await createAssistantThread();
       threads.value = [thread, ...threads.value];
       threadId = thread.id;
       activeId.value = threadId;
     }
-    const result = await sendAssistantMessage(threadId, content);
+    const result = await sendAssistantMessage(threadId, text);
     draft.value = "";
     messages.value = result.messages;
     threads.value = threads.value.map((thread) =>
@@ -67,9 +75,32 @@ async function submit() {
     );
     await scrollToBottom();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "No se pudo consultar al asistente";
+    error.value = e instanceof Error ? e.message : "No se pudo consultar al agente";
   } finally {
     sending.value = false;
+  }
+}
+
+async function submit() {
+  await sendContent(draft.value);
+}
+
+/** Arranca una acción del catálogo: hilo nuevo + mensaje guía al agente. */
+async function startAction(starterMessage: string, actionId?: string) {
+  if (sending.value) return;
+  startNew();
+  activeActionId.value = actionId || null;
+  await sendContent(starterMessage, { freshThread: true });
+}
+
+async function onActionUpdated(nextMessages: AssistantMessage[]) {
+  if (nextMessages.length) {
+    messages.value = nextMessages;
+    await scrollToBottom();
+    return;
+  }
+  if (activeId.value) {
+    await openThread(activeId.value);
   }
 }
 
@@ -86,8 +117,14 @@ function onSelectThread(event: Event) {
     startNew();
     return;
   }
+  activeActionId.value = null;
   openThread(value);
 }
+
+watch(sending, (value) => emit("busyChange", value), { immediate: true });
+watch(activeActionId, (value) => emit("actionChange", value), { immediate: true });
+
+defineExpose({ startAction });
 
 onMounted(async () => {
   try {
@@ -101,7 +138,7 @@ onMounted(async () => {
       await openThread(assistantThreads[0].id);
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "No se pudo cargar el asistente";
+    error.value = e instanceof Error ? e.message : "No se pudo cargar el agente";
   } finally {
     loading.value = false;
   }
@@ -113,7 +150,7 @@ onMounted(async () => {
     <header class="panel-head">
       <div>
         <h2>Agente</h2>
-        <p>{{ status?.model || "DeepSeek" }}</p>
+        <p>{{ status?.model || "DeepSeek" }} · datos {{ status?.domain_data_source || "local" }}</p>
       </div>
       <div class="panel-head__actions">
         <select
@@ -138,17 +175,24 @@ onMounted(async () => {
     <section ref="threadRef" class="assistant-dock__messages">
       <div v-if="loading" class="inbox__empty">Cargando...</div>
       <div v-else-if="!messages.length" class="assistant-dock__empty">
-        <p>Preguntá sobre el inbox. Lee contactos y mensajes recientes. No envía WhatsApp.</p>
+        <p>
+          Elegí una acción a la izquierda o preguntá directo: convenios, médicos o un mail.
+        </p>
       </div>
-      <article
-        v-for="message in messages"
-        :key="message.id"
-        class="assistant-bubble"
-        :class="`assistant-bubble--${message.role}`"
-      >
-        <p>{{ message.content }}</p>
-      </article>
-      <p v-if="sending" class="assistant-app__pending">Consultando el inbox…</p>
+      <template v-for="message in messages" :key="message.id">
+        <article
+          class="assistant-bubble"
+          :class="`assistant-bubble--${message.role}`"
+        >
+          <p>{{ message.content }}</p>
+        </article>
+        <ActionCard
+          v-if="message.action"
+          :action="message.action"
+          @updated="onActionUpdated"
+        />
+      </template>
+      <p v-if="sending" class="assistant-app__pending">Consultando tools…</p>
     </section>
 
     <footer class="agent-reply">
@@ -158,7 +202,7 @@ onMounted(async () => {
           v-model="draft"
           class="agent-reply__input"
           rows="2"
-          placeholder="Ejemplo: ¿quién escribió hoy y qué pidió?"
+          placeholder="Respondé al agente o escribí una consulta…"
           :disabled="sending"
           @keydown="onKeydown"
         />

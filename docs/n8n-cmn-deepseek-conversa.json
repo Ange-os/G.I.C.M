@@ -1,0 +1,412 @@
+{
+  "name": "CMN Agente DeepSeek - Conversa",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "conversa-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-conversa",
+      "name": "Webhook Conversa",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 480],
+      "webhookId": "conversa-events-cmn"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [480, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "evt",
+              "leftValue": "={{ $json.body.event || $json.event }}",
+              "rightValue": "conversation.message.created",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "dir",
+              "leftValue": "={{ $json.body.message?.direction || $json.message?.direction }}",
+              "rightValue": "inbound",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "sender",
+              "leftValue": "={{ $json.body.message?.sender_type || $json.message?.sender_type }}",
+              "rightValue": "contact",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-cliente",
+      "name": "¿Mensaje del cliente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [480, 520]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bot-off",
+              "leftValue": "={{ JSON.stringify($json.body.conversation?.tags || $json.conversation?.tags || []) }}",
+              "rightValue": "bot-apagado",
+              "operator": { "type": "string", "operation": "notContains" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-bot",
+      "name": "¿Bot activo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, 520]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "userMessage",
+              "name": "userMessage",
+              "value": "={{ $json.body.message?.content || $json.message?.content || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "phoneId",
+              "name": "phoneId",
+              "value": "={{ $json.body.contact?.phone || $json.contact?.phone || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "conversation_id",
+              "name": "conversation_id",
+              "value": "={{ $json.body.conversation?.id || $json.conversation?.id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "messageType",
+              "name": "messageType",
+              "value": "={{ ($json.body.message?.content || $json.message?.content) ? 'text' : 'other' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extraer",
+      "name": "Extraer mensaje y teléfono",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, 520]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "tipo",
+              "leftValue": "={{ $json.messageType }}",
+              "rightValue": "text",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-texto",
+      "name": "¿Es mensaje de texto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, 520]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fallback-reply",
+              "name": "botReply",
+              "value": "Por ahora solo puedo leer mensajes de texto. Escribime tu consulta y te ayudo con médicos, trámites o información del Círculo Médico del Norte.",
+              "type": "string"
+            },
+            {
+              "id": "fallback-phone",
+              "name": "phoneId",
+              "value": "={{ $json.phoneId }}",
+              "type": "string"
+            },
+            {
+              "id": "fallback-conv",
+              "name": "conversation_id",
+              "value": "={{ $json.conversation_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-texto",
+      "name": "Respuesta no-texto",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1440, 720]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "Eres el asistente oficial del Círculo Médico del Norte (CMN), institución fundada en 1956 en Villa de Merlo, San Luis, Argentina.\n\nTu rol: informar sobre la institución, listar médicos por especialidad y derivar al canal de contacto correcto.\nNunca brindes atención médica, no saques turnos ni des consejos clínicos.\n\n## Herramientas (úsala cuando haga falta)\n- buscar_medicos: cuando pidan médicos, especialidades o nombres.\n- obtener_contacto: cuando pidan trámites, DOSEP, socios, convenios o administración.\n- info_institucional: dirección, teléfono, servicios, cuota, web.\n\n## Estilo WhatsApp\n- Amable, claro, profesional y cercano.\n- Respuestas cortas (máx 2-3 párrafos).\n- Máx 2-3 emojis por respuesta.\n- Listá como máximo 8 médicos por mensaje; ofrecé mostrar más.\n- Si no estás seguro: derivá al canal adecuado, no inventes.\n\n## Contactos de referencia\n- DOSEP → dosep@circulomedicodelnorte.com.ar\n- Socios → socios@circulomedicodelnorte.com.ar\n- Convenios → convenios@circulomedicodelnorte.com.ar\n- Administración → administracion@circulomedicodelnorte.com.ar\n- Tel: (+54) 02656-470428 | Sede: Pres. Perón 112, Merlo, San Luis\n- Web: https://circulomedicodelnorte.com.ar/\n\nSi el usuario saluda, presentate brevemente y preguntá en qué ayudar."
+        }
+      },
+      "id": "agente-cmn",
+      "name": "Agente CMN",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1480, 280]
+    },
+    {
+      "parameters": {
+        "model": "deepseek-v4-pro",
+        "options": {
+          "maxTokens": 800,
+          "temperature": 0.3
+        }
+      },
+      "id": "deepseek-chat",
+      "name": "DeepSeek Chat",
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [1320, 80],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "gaqbDWr0SthPgaEj",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Extraer mensaje y teléfono').item.json.phoneId }}",
+        "contextWindowLength": 12
+      },
+      "id": "memoria",
+      "name": "Memoria por teléfono",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [1480, 80]
+    },
+    {
+      "parameters": {
+        "description": "Busca médicos del Círculo Médico del Norte por especialidad o por nombre. Usar cuando el usuario pregunte por médicos, especialidades o un profesional concreto.",
+        "jsCode": "const MEDICOS = [\n  { nombre: 'Afionis, Silvina', especialidad: 'Pediatría' },\n  { nombre: 'Aguilera Marturano, Leticia', especialidad: 'Kinesiología' },\n  { nombre: 'Albo, Carolina', especialidad: 'Médico Familiar' },\n  { nombre: 'Allende, Sergio', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Alvarez, Maria Fernanda', especialidad: 'Kinesiología' },\n  { nombre: 'Aquadro, Mauricio', especialidad: 'Kinesiología' },\n  { nombre: 'Aren, Leandro', especialidad: 'Kinesiología' },\n  { nombre: 'Arias, Mario', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Asprea, Paula', especialidad: 'Médico Familiar' },\n  { nombre: 'Balestro, Luis Guillermo', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Barrionuevo, María Del Mar', especialidad: 'Ginecología' },\n  { nombre: 'Barroso, Damián', especialidad: 'Médico Familiar' },\n  { nombre: 'Bello, Marcelo', especialidad: 'Traumatología' },\n  { nombre: 'Benites Areno, Eduardo', especialidad: 'Cardiología' },\n  { nombre: 'Bionda, Javier', especialidad: 'Médico Familiar' },\n  { nombre: 'Bodart, Vanesa', especialidad: 'Nutricionista' },\n  { nombre: 'Bongiovanni, Roberto', especialidad: 'Kinesiología' },\n  { nombre: 'Boscoboinik, Roberto', especialidad: 'Médico Familiar' },\n  { nombre: 'Buades, Ivana', especialidad: 'Kinesiología' },\n  { nombre: 'Burgos, Jimena', especialidad: 'Kinesiología' },\n  { nombre: 'Buzzi, Leonardo', especialidad: 'Kinesiología' },\n  { nombre: 'Campos, Rafael', especialidad: 'Kinesiología' },\n  { nombre: 'Cappetini, Carolina', especialidad: 'Nutricionista' },\n  { nombre: 'Carubin, Jorge', especialidad: 'Pediatría' },\n  { nombre: 'Caruso, Florencia', especialidad: 'Pediatría' },\n  { nombre: 'Chocobar, Jose Maria', especialidad: 'Médico Familiar' },\n  { nombre: 'Colombo, Luisina', especialidad: 'Kinesiología' },\n  { nombre: 'Comas, Ivan', especialidad: 'Ginecología' },\n  { nombre: 'Corbacho, Maria Alejandra', especialidad: 'Pediatría' },\n  { nombre: 'Costa, Sebastian', especialidad: 'Kinesiología' },\n  { nombre: 'Cuniberti, Viviana', especialidad: 'Dermatología' },\n  { nombre: 'Dayenoff, Julio', especialidad: 'Pediatría' },\n  { nombre: 'Diaz, Pablo', especialidad: 'Médico Familiar' },\n  { nombre: 'Dinesen Jensen, Lars', especialidad: 'Pediatría' },\n  { nombre: 'Duje, Moisés', especialidad: 'Médico Familiar' },\n  { nombre: 'Escrich, Miguel', especialidad: 'Cardiología' },\n  { nombre: 'Espinosa, Miguel', especialidad: 'Ginecología' },\n  { nombre: 'Farhat, Carlos Esteban', especialidad: 'Psiquiatría' },\n  { nombre: 'Fernandez Corradi, Gustavo', especialidad: 'Cardiología' },\n  { nombre: 'Fernandez, Juan Pablo', especialidad: 'Kinesiología' },\n  { nombre: 'Fernandez, Roberto', especialidad: 'Médico Familiar' },\n  { nombre: 'Figueroa, Juan Fernando', especialidad: 'Médico Familiar' },\n  { nombre: 'Flores, María Isabel', especialidad: 'Cardiología' },\n  { nombre: 'Fueguel, Malena', especialidad: 'Pediatría' },\n  { nombre: 'Fucile, Marcela', especialidad: 'Neumonología' },\n  { nombre: 'Furque, Eduardo', especialidad: 'Pediatría' },\n  { nombre: 'Garcia Aguirre, Mariano', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Garcia Petrino, María Laura', especialidad: 'Médico Familiar' },\n  { nombre: 'Garcia, Cecilia', especialidad: 'Diabetología' },\n  { nombre: 'Gatica, Carlos Eduardo', especialidad: 'Médico Familiar' },\n  { nombre: 'Godoy, Ada', especialidad: 'Kinesiología' },\n  { nombre: 'Godoy, María Del Valle', especialidad: 'Médico Familiar' },\n  { nombre: 'Goio, Martín', especialidad: 'Médico Familiar' },\n  { nombre: 'Guajardo, Pamela', especialidad: 'Kinesiología' },\n  { nombre: 'Gardeñes, Monica', especialidad: 'Médico Familiar' },\n  { nombre: 'Gutierrez, Micaela', especialidad: 'Médico Familiar' },\n  { nombre: 'Heredia, Alejandro', especialidad: 'Ginecología' },\n  { nombre: 'Herzig, Javier Otto', especialidad: 'Médico Familiar' },\n  { nombre: 'Jofre, Maria Florencia', especialidad: 'Médico Familiar' },\n  { nombre: 'Lino, Walter', especialidad: 'Médico Familiar' },\n  { nombre: 'Lopez, Carola', especialidad: 'Ginecología' },\n  { nombre: 'Marinaro, Carolina', especialidad: 'Dermatología' },\n  { nombre: 'Martinelli, Héctor', especialidad: 'Médico Familiar' },\n  { nombre: 'Mayer, German Federico', especialidad: 'Kinesiología' },\n  { nombre: 'Mencarelli, Adriana', especialidad: 'Médico Familiar' },\n  { nombre: 'Mercau, María Lorena', especialidad: 'Nutricionista' },\n  { nombre: 'Milano, Pierino', especialidad: 'Pediatría' },\n  { nombre: 'Mitestainer, Susana Beatriz', especialidad: 'Médico Familiar' },\n  { nombre: 'Molinari, Romina', especialidad: 'Nutricionista' },\n  { nombre: 'Moriena, Silvana', especialidad: 'Médico Familiar' },\n  { nombre: 'Mouratoglou, Constantino', especialidad: 'Médico Familiar' },\n  { nombre: 'Nieva, Guillermo', especialidad: 'Cardiología' },\n  { nombre: 'Olagaray, Juan', especialidad: 'Médico Familiar' },\n  { nombre: 'Oliva, Jorge', especialidad: 'Médico Familiar' },\n  { nombre: 'Olivera, Adriana', especialidad: 'Gastroenterología' },\n  { nombre: 'Ortega, Priscila', especialidad: 'Cardiología' },\n  { nombre: 'Oviedo, Jorge', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Palacios, Maria Carina', especialidad: 'Médica Cirujana' },\n  { nombre: 'Pastore, Sergio', especialidad: 'Médico Familiar' },\n  { nombre: 'Pedraza, Roberto', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Pereira, Jorge', especialidad: 'Médico Familiar' },\n  { nombre: 'Pereyra Nuñez, Rubén Martín', especialidad: 'Cardiología' },\n  { nombre: 'Ponce, Luis R.', especialidad: 'Médico Familiar' },\n  { nombre: 'Priotto, Claudia', especialidad: 'Médico Familiar' },\n  { nombre: 'Pucci, Javier', especialidad: 'Diagnóstico por Imágenes' },\n  { nombre: 'Quiroga, Juan Cruz', especialidad: 'Kinesiología' },\n  { nombre: 'Rodriguez, Alvaro', especialidad: 'Oftalmología' },\n  { nombre: 'Rodriguez, Mariana Alejandra', especialidad: 'Kinesiología' },\n  { nombre: 'Romero, Diego', especialidad: 'Cardiología' },\n  { nombre: 'Romero, Julia Beatriz', especialidad: 'Nutricionista' },\n  { nombre: 'Rossi, Silvia', especialidad: 'Pediatría' },\n  { nombre: 'Salvano, Genaro', especialidad: 'Traumatología' },\n  { nombre: 'Santodomingo, Lourdes', especialidad: 'Pediatría' },\n  { nombre: 'Saporiti, Daniela', especialidad: 'Ginecología' },\n  { nombre: 'Scatena, Adela', especialidad: 'Oftalmología' },\n  { nombre: 'Sierra, Silvina', especialidad: 'Kinesiología' },\n  { nombre: 'Sobrado, Gabriela', especialidad: 'Traumatología' },\n  { nombre: 'Spedaletti, Daniel', especialidad: 'Cardiología' },\n  { nombre: 'Sterpin, Oda', especialidad: 'Kinesiología' },\n  { nombre: 'Streitenberger, María Alejandra', especialidad: 'Nutricionista' },\n  { nombre: 'Torres, Micaela', especialidad: 'Pediatría' },\n  { nombre: 'Urquiza, Raúl', especialidad: 'Médico Familiar' },\n  { nombre: 'Valdarenas, Julio', especialidad: 'Médico Familiar' },\n  { nombre: 'Varas, Maria Soledad', especialidad: 'Oftalmología' },\n  { nombre: 'Villalonga, Rodrigo', especialidad: 'Médico Familiar' },\n  { nombre: 'Villamil, Virginia', especialidad: 'Médico Familiar' },\n  { nombre: 'Vino, Anabel', especialidad: 'Médico Familiar' },\n  { nombre: 'Yapura, Fabián', especialidad: 'Kinesiología' },\n  { nombre: 'Yed, Diego', especialidad: 'Psiquiatría' },\n  { nombre: 'Zuiani, Andrea', especialidad: 'Kinesiología' }\n];\n\nfunction plano(s) {\n  return String(s || '').toLowerCase()\n    .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')\n    .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ü/g, 'u').replace(/ñ/g, 'n');\n}\n\nconst SINONIMOS = {\n  pediatra: 'pediatria', cardiologo: 'cardiologia', ginecologo: 'ginecologia',\n  traumatologo: 'traumatologia', kinesiologo: 'kinesiologia', nutricion: 'nutricionista',\n  oftalmologo: 'oftalmologia', dermatologo: 'dermatologia', psiquiatra: 'psiquiatria',\n  familiar: 'medico familiar', clinica: 'medico familiar',\n  imagenes: 'diagnostico por imagenes', radiologo: 'diagnostico por imagenes'\n};\n\nlet q = plano(query);\nfor (const [k, v] of Object.entries(SINONIMOS)) {\n  if (q.includes(k)) q = v;\n}\n\nif (!q) {\n  const especialidades = [...new Set(MEDICOS.map(m => m.especialidad))].sort();\n  return JSON.stringify({ total_medicos: MEDICOS.length, especialidades, tip: 'Pedí una especialidad para listar profesionales.' });\n}\n\nconst matches = MEDICOS.filter(m => {\n  const esp = plano(m.especialidad);\n  const nom = plano(m.nombre);\n  return esp.includes(q) || nom.includes(q) || q.includes(esp);\n});\n\nconst limit = 8;\nconst page = matches.slice(0, limit);\nreturn JSON.stringify({\n  consulta: query,\n  encontrados: matches.length,\n  mostrando: page.length,\n  hay_mas: matches.length > limit,\n  medicos: page,\n  nota: matches.length > limit ? 'Hay más resultados; preguntá si quiere ver más o filtrar mejor.' : null\n});"
+      },
+      "id": "tool-medicos",
+      "name": "Tool Buscar Médicos",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.2,
+      "position": [1680, 80]
+    },
+    {
+      "parameters": {
+        "description": "Devuelve el email y canal de contacto correcto según el motivo: dosep, socios, convenios, administracion, general.",
+        "jsCode": "function plano(s) {\n  return String(s || '').toLowerCase()\n    .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i')\n    .replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ñ/g, 'n');\n}\nconst motivo = plano(query);\nconst canales = {\n  dosep: { email: 'dosep@circulomedicodelnorte.com.ar', uso: 'Cobertura DOSEP, autorizaciones y gestiones de obra social' },\n  socios: { email: 'socios@circulomedicodelnorte.com.ar', uso: 'Estado de socio, aranceles, trámites de asociación y cuota social' },\n  convenios: { email: 'convenios@circulomedicodelnorte.com.ar', uso: 'Propuestas, acuerdos y convenios' },\n  administracion: { email: 'administracion@circulomedicodelnorte.com.ar', uso: 'Temas contables y administración interna' },\n  general: { email: 'socios@circulomedicodelnorte.com.ar', telefono: '(+54) 02656-470428', uso: 'Consultas generales' }\n};\nlet key = 'general';\nif (motivo.includes('dosep') || motivo.includes('obra social') || motivo.includes('autoriz')) key = 'dosep';\nelse if (motivo.includes('socio') || motivo.includes('asoci') || motivo.includes('cuota') || motivo.includes('arancel')) key = 'socios';\nelse if (motivo.includes('convenio') || motivo.includes('acuerdo')) key = 'convenios';\nelse if (motivo.includes('admin') || motivo.includes('contab') || motivo.includes('factura')) key = 'administracion';\nreturn JSON.stringify({ motivo_detectado: key, ...canales[key], formularios_desde: 'web@circulomedicodelnorte.com.ar', nota: 'No sacar turnos ni dar atención médica; solo derivar.' });"
+      },
+      "id": "tool-contacto",
+      "name": "Tool Contacto",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.2,
+      "position": [1840, 80]
+    },
+    {
+      "parameters": {
+        "description": "Devuelve información institucional del Círculo Médico del Norte: sede, teléfono, servicios, cuota, fundación y web.",
+        "jsCode": "return JSON.stringify({\n  nombre: 'Círculo Médico del Norte',\n  tagline: 'El respaldo institucional para ejercer la medicina con previsibilidad.',\n  fundacion: 1956,\n  tipo: 'Institución sin fines de lucro',\n  sede: 'Pres. Perón 112, D5881 Merlo, San Luis, Argentina',\n  telefono: '(+54) 02656-470428',\n  web: 'https://circulomedicodelnorte.com.ar/',\n  servicios: ['Gestión y liquidación de honorarios', 'Honorarios actualizados', 'Cobertura profesional', 'Gestión impositiva', 'Beneficios exclusivos para socios'],\n  cuota_social: 'Equivalente a 1 consulta DOSEP',\n  retencion: '5% de la facturación por gastos administrativos',\n  nota: 'Gestiona cobro de honorarios de primer nivel. No brinda turnos ni atención médica por este canal.'\n});"
+      },
+      "id": "tool-info",
+      "name": "Tool Info Institucional",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.2,
+      "position": [2000, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Extraer mensaje y teléfono').first().json;\nconst agentOut = $input.first().json;\nlet botReply = agentOut.output || agentOut.text || agentOut.response || 'Lo siento, no pude procesar tu consulta. Por favor llamá al 02656-470428.';\nbotReply = String(botReply).replace(/###\\s*/g, '').replace(/##\\s*/g, '').replace(/#\\s*/g, '').trim();\nif (botReply.length > 1600) botReply = botReply.substring(0, 1550) + '...';\nreturn [{ json: { phoneId: ctx.phoneId, conversation_id: ctx.conversation_id, botReply } }];"
+      },
+      "id": "procesar",
+      "name": "Procesar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://gai-api.xia.ar/webhooks/n8n/inbound",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-N8N-API-Key",
+              "value": "PEGAR_N8N_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"message\": {\n    \"sender_type\": \"bot\",\n    \"content\": {{ JSON.stringify($json.botReply) }}\n  },\n  \"send_whatsapp\": true\n}",
+        "options": {}
+      },
+      "id": "enviar-conversa",
+      "name": "Enviar respuesta a Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 480]
+    }
+  ],
+  "connections": {
+    "Webhook Conversa": {
+      "main": [
+        [
+          { "node": "Responder OK", "type": "main", "index": 0 },
+          { "node": "¿Mensaje del cliente?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "¿Mensaje del cliente?": {
+      "main": [
+        [
+          { "node": "¿Bot activo?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "¿Bot activo?": {
+      "main": [
+        [
+          { "node": "Extraer mensaje y teléfono", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extraer mensaje y teléfono": {
+      "main": [
+        [
+          { "node": "¿Es mensaje de texto?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "¿Es mensaje de texto?": {
+      "main": [
+        [
+          { "node": "Agente CMN", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Respuesta no-texto", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Agente CMN": {
+      "main": [
+        [
+          { "node": "Procesar respuesta", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "DeepSeek Chat": {
+      "ai_languageModel": [
+        [
+          { "node": "Agente CMN", "type": "ai_languageModel", "index": 0 }
+        ]
+      ]
+    },
+    "Memoria por teléfono": {
+      "ai_memory": [
+        [
+          { "node": "Agente CMN", "type": "ai_memory", "index": 0 }
+        ]
+      ]
+    },
+    "Tool Buscar Médicos": {
+      "ai_tool": [
+        [
+          { "node": "Agente CMN", "type": "ai_tool", "index": 0 }
+        ]
+      ]
+    },
+    "Tool Contacto": {
+      "ai_tool": [
+        [
+          { "node": "Agente CMN", "type": "ai_tool", "index": 0 }
+        ]
+      ]
+    },
+    "Tool Info Institucional": {
+      "ai_tool": [
+        [
+          { "node": "Agente CMN", "type": "ai_tool", "index": 0 }
+        ]
+      ]
+    },
+    "Procesar respuesta": {
+      "main": [
+        [
+          { "node": "Enviar respuesta a Conversa", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Respuesta no-texto": {
+      "main": [
+        [
+          { "node": "Enviar respuesta a Conversa", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+}

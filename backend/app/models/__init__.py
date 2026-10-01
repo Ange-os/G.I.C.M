@@ -14,6 +14,15 @@ from app.models.entities import (
     AssistantThread,
     AssistantMessage,
 )
+from app.models.domain import (
+    ActionProposal,
+    ActionProposalStatus,
+    Agreement,
+    AgreementDoctor,
+    AgreementStatus,
+    Doctor,
+    Organization,
+)
 
 __all__ = [
     "Channel",
@@ -30,4 +39,11 @@ __all__ = [
     "AssistantRole",
     "AssistantThread",
     "AssistantMessage",
+    "Organization",
+    "Doctor",
+    "Agreement",
+    "AgreementDoctor",
+    "AgreementStatus",
+    "ActionProposal",
+    "ActionProposalStatus",
 ]

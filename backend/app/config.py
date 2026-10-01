@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    # local = tablas simulacro en Postgres; external = implementar otro repository
+    domain_data_source: str = "local"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None

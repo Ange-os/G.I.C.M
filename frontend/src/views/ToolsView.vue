@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { convertPdfToText, fetchToolsStatus, sendToolEmail, type PdfTextResult } from "../api/client";
 import { getSessionUser } from "../api/session";
+
+type ToolAction = "pdf" | "mail";
 
 const isAdmin = computed(() => getSessionUser()?.role === "admin");
 const mailConfigured = ref(true);
@@ -18,7 +20,39 @@ const mailBody = ref("");
 const mailLoading = ref(false);
 const mailError = ref<string | null>(null);
 const mailSent = ref(false);
-const tab = ref<"pdf" | "mail">("pdf");
+
+const open = ref(false);
+const activeAction = ref<ToolAction | null>(null);
+const panelRef = ref<HTMLElement | null>(null);
+const statusNote = ref("");
+
+function collapse() {
+  open.value = false;
+  activeAction.value = null;
+}
+
+function toggle() {
+  if (open.value) {
+    collapse();
+    return;
+  }
+  open.value = true;
+  activeAction.value = null;
+  statusNote.value = "";
+}
+
+function selectAction(action: ToolAction) {
+  activeAction.value = action;
+  statusNote.value = "";
+  pdfError.value = null;
+  mailError.value = null;
+  mailSent.value = false;
+}
+
+function finishAction(note: string) {
+  statusNote.value = note;
+  collapse();
+}
 
 function onFile(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -47,6 +81,7 @@ async function copyText() {
   if (!pdfResult.value?.text) return;
   await navigator.clipboard.writeText(pdfResult.value.text);
   copied.value = true;
+  finishAction("Texto del PDF copiado");
 }
 
 async function sendMail() {
@@ -60,6 +95,7 @@ async function sendMail() {
     mailTo.value = "";
     mailSubject.value = "";
     mailBody.value = "";
+    finishAction("Mail enviado");
   } catch (e) {
     mailError.value = e instanceof Error ? e.message : "No se pudo enviar el mail";
   } finally {
@@ -67,7 +103,23 @@ async function sendMail() {
   }
 }
 
+function onDocumentPointerDown(event: PointerEvent) {
+  if (!open.value || !panelRef.value) return;
+  const target = event.target as Node | null;
+  if (target && !panelRef.value.contains(target)) {
+    collapse();
+  }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && open.value) {
+    collapse();
+  }
+}
+
 onMounted(async () => {
+  document.addEventListener("pointerdown", onDocumentPointerDown);
+  window.addEventListener("keydown", onKeydown);
   try {
     const status = await fetchToolsStatus();
     mailConfigured.value = status.mail_configured;
@@ -75,85 +127,135 @@ onMounted(async () => {
     mailConfigured.value = false;
   }
 });
+
+onUnmounted(() => {
+  document.removeEventListener("pointerdown", onDocumentPointerDown);
+  window.removeEventListener("keydown", onKeydown);
+});
+
+async function focusPanel() {
+  await nextTick();
+  panelRef.value?.querySelector<HTMLElement>("button, input, textarea")?.focus();
+}
+
+function openAndSelect(action: ToolAction) {
+  open.value = true;
+  selectAction(action);
+  focusPanel();
+}
 </script>
 
 <template>
-  <section class="tools-panel">
-    <header class="panel-head">
-      <div>
-        <h2>Herramientas</h2>
-        <p>PDF y mail, aparte del inbox</p>
-      </div>
-      <div class="panel-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="tab === 'pdf'"
-          :class="{ 'panel-tabs__tab--active': tab === 'pdf' }"
-          @click="tab = 'pdf'"
-        >
-          PDF
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="tab === 'mail'"
-          :class="{ 'panel-tabs__tab--active': tab === 'mail' }"
-          @click="tab = 'mail'"
-        >
-          Mail
-        </button>
-      </div>
-    </header>
+  <section ref="panelRef" class="tools-panel" :class="{ 'tools-panel--open': open }">
+    <button
+      type="button"
+      class="tools-panel__toggle"
+      :aria-expanded="open"
+      aria-controls="tools-panel-body"
+      aria-haspopup="menu"
+      @click="toggle"
+    >
+      <span class="tools-panel__toggle-text">
+        <strong>Herramientas</strong>
+        <span>{{ statusNote || "PDF y mail" }}</span>
+      </span>
+      <span class="tools-panel__chevron" aria-hidden="true">{{ open ? "▾" : "▸" }}</span>
+    </button>
 
-    <div class="tools-panel__body">
-      <div v-if="tab === 'pdf'">
-        <p class="tools-panel__hint">Subí un PDF con texto. Un escaneo sin texto no se puede leer.</p>
-        <label class="tools__file">
-          Archivo
-          <input type="file" accept="application/pdf,.pdf" @change="onFile" />
-        </label>
-        <button class="btn-primary" type="button" :disabled="!pdfFile || pdfLoading" @click="convertPdf">
-          {{ pdfLoading ? "Leyendo..." : "Extraer texto" }}
+    <div v-show="open" id="tools-panel-body" class="tools-panel__content">
+      <div v-if="!activeAction" class="tools-panel__menu" role="menu">
+        <button type="button" role="menuitem" class="tools-panel__menu-item" @click="openAndSelect('pdf')">
+          <strong>PDF a texto</strong>
+          <span>Extraer y copiar el contenido</span>
         </button>
-        <p v-if="pdfError" class="error">{{ pdfError }}</p>
-        <div v-if="pdfResult" class="tools__result">
-          <div class="tools__result-bar">
-            <span>{{ pdfResult.filename }} · {{ pdfResult.pages }} páginas</span>
-            <button class="btn-ghost" type="button" @click="copyText">
-              {{ copied ? "Copiado" : "Copiar" }}
+        <button type="button" role="menuitem" class="tools-panel__menu-item" @click="openAndSelect('mail')">
+          <strong>Enviar mail</strong>
+          <span>Mensaje por SMTP</span>
+        </button>
+      </div>
+
+      <template v-else>
+        <div class="panel-head panel-head--tools">
+          <button class="btn-ghost tools-panel__back" type="button" @click="activeAction = null">
+            ← Acciones
+          </button>
+          <div class="panel-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeAction === 'pdf'"
+              :class="{ 'panel-tabs__tab--active': activeAction === 'pdf' }"
+              @click="selectAction('pdf')"
+            >
+              PDF
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeAction === 'mail'"
+              :class="{ 'panel-tabs__tab--active': activeAction === 'mail' }"
+              @click="selectAction('mail')"
+            >
+              Mail
             </button>
           </div>
-          <pre>{{ pdfResult.text }}</pre>
         </div>
-      </div>
 
-      <form v-else class="tools__form" @submit.prevent="sendMail">
-        <p v-if="!isAdmin" class="tools-panel__hint">
-          Lo envía administración. Con el rol consejo podés ver la herramienta, no usarla.
-        </p>
-        <p v-else-if="!mailConfigured" class="error">
-          Falta SMTP_HOST en el .env del backend. Completalo y reiniciá la API.
-        </p>
-        <p v-else class="tools-panel__hint">Completá destinatario, asunto y mensaje.</p>
-        <label>
-          Para
-          <input v-model="mailTo" type="email" required :disabled="!isAdmin || mailLoading" />
-        </label>
-        <label>
-          Asunto
-          <input v-model="mailSubject" type="text" required maxlength="200" :disabled="!isAdmin || mailLoading" />
-        </label>
-        <label>
-          Mensaje
-          <textarea v-model="mailBody" rows="4" required :disabled="!isAdmin || mailLoading" />
-        </label>
-        <p v-if="mailError" class="error">{{ mailError }}</p>
-        <p v-if="mailSent" class="tools__ok">Mail enviado.</p>
-        <button class="btn-primary" type="submit" :disabled="!isAdmin || mailLoading || !mailConfigured">
-          {{ mailLoading ? "Enviando..." : "Enviar" }}
-        </button>
-      </form>
+        <div class="tools-panel__body">
+          <div v-if="activeAction === 'pdf'">
+            <p class="tools-panel__hint">Subí un PDF con texto. Al copiar, el panel se pliega.</p>
+            <label class="tools__file">
+              Archivo
+              <input type="file" accept="application/pdf,.pdf" @change="onFile" />
+            </label>
+            <button class="btn-primary" type="button" :disabled="!pdfFile || pdfLoading" @click="convertPdf">
+              {{ pdfLoading ? "Leyendo..." : "Extraer texto" }}
+            </button>
+            <p v-if="pdfError" class="error">{{ pdfError }}</p>
+            <div v-if="pdfResult" class="tools__result">
+              <div class="tools__result-bar">
+                <span>{{ pdfResult.filename }} · {{ pdfResult.pages }} páginas</span>
+                <button class="btn-ghost" type="button" @click="copyText">
+                  {{ copied ? "Copiado" : "Copiar" }}
+                </button>
+              </div>
+              <pre>{{ pdfResult.text }}</pre>
+            </div>
+          </div>
+
+          <form v-else class="tools__form" @submit.prevent="sendMail">
+            <p v-if="!isAdmin" class="tools-panel__hint">
+              Lo envía administración. Con el rol consejo podés ver la herramienta, no usarla.
+            </p>
+            <p v-else-if="!mailConfigured" class="error">
+              Falta SMTP_HOST en el .env del backend. Completalo y reiniciá la API.
+            </p>
+            <p v-else class="tools-panel__hint">Al enviar, el panel se pliega.</p>
+            <label>
+              Para
+              <input v-model="mailTo" type="email" required :disabled="!isAdmin || mailLoading" />
+            </label>
+            <label>
+              Asunto
+              <input
+                v-model="mailSubject"
+                type="text"
+                required
+                maxlength="200"
+                :disabled="!isAdmin || mailLoading"
+              />
+            </label>
+            <label>
+              Mensaje
+              <textarea v-model="mailBody" rows="4" required :disabled="!isAdmin || mailLoading" />
+            </label>
+            <p v-if="mailError" class="error">{{ mailError }}</p>
+            <button class="btn-primary" type="submit" :disabled="!isAdmin || mailLoading || !mailConfigured">
+              {{ mailLoading ? "Enviando..." : "Enviar" }}
+            </button>
+          </form>
+        </div>
+      </template>
     </div>
   </section>
 </template>
