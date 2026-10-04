@@ -100,6 +100,7 @@ export interface Conversation {
   updated_at: string;
   contact?: Contact | null;
   tags: Tag[];
+  whatsapp_provider?: "ycloud" | "meta" | string | null;
 }
 
 export interface Message {

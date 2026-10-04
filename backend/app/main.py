@@ -7,7 +7,15 @@ from app.config import settings
 from app.database import Base, async_session, engine
 from app.domain.seed import seed_domain_demo
 from app.models import domain as _domain_models  # noqa: F401 — registra tablas en metadata
-from app.routers import assistant, auth, conversations, tools, webhooks_n8n, webhooks_ycloud
+from app.routers import (
+    assistant,
+    auth,
+    conversations,
+    tools,
+    webhooks_meta,
+    webhooks_n8n,
+    webhooks_ycloud,
+)
 from app.services.conversation import seed_default_tags
 from app.services.users import seed_default_users
 from app.services.events import close_redis, get_redis
@@ -36,7 +44,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Conversa Platform API",
-    description="Módulo de conversación embebible con integración YCloud y n8n",
+    description="Módulo de conversación embebible con WhatsApp (YCloud / Meta) y n8n",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -53,6 +61,7 @@ app.include_router(auth.router)
 app.include_router(assistant.router)
 app.include_router(tools.router)
 app.include_router(webhooks_ycloud.router)
+app.include_router(webhooks_meta.router)
 app.include_router(webhooks_n8n.router)
 app.include_router(conversations.router)
 

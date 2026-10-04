@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     ycloud_webhook_secret: str | None = None
     ycloud_api_key: str | None = None
     ycloud_from_number: str | None = None
+    # WhatsApp: ycloud (actual) | meta (Cloud API experimento). Ambos webhooks pueden convivir.
+    whatsapp_default_provider: str = "ycloud"
+    meta_whatsapp_access_token: str | None = None
+    meta_whatsapp_phone_number_id: str | None = None
+    meta_whatsapp_business_account_id: str | None = None
+    meta_whatsapp_verify_token: str | None = None
+    meta_whatsapp_app_secret: str | None = None
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     jwt_secret: str = "cambiar-este-secreto"
     jwt_expire_minutes: int = 720

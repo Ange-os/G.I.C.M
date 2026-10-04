@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.entities import Channel, MessageDirection, SenderType
+from app.models.entities import Channel, MessageDirection
 from app.schemas.conversation import ConversationRead, MessageRead, N8nInboundRequest, N8nInboundResponse
 from app.services.conversation import (
     create_message,
@@ -11,7 +11,9 @@ from app.services.conversation import (
     update_conversation_tags,
 )
 from app.services.events import publish_event
-from app.services.ycloud_outbound import YCloudError, send_whatsapp_text
+from app.whatsapp.base import WhatsAppProviderError
+from app.whatsapp.conversation_provider import get_conversation_provider
+from app.whatsapp.factory import get_whatsapp_provider
 
 router = APIRouter(prefix="/webhooks/n8n", tags=["webhooks-n8n"])
 
@@ -31,7 +33,8 @@ async def n8n_inbound(
     """
     Endpoint para que n8n envíe mensajes, actualice tags (ej. bot-apagado)
     y cambie el estado de la conversación.
-    Con send_whatsapp=true la API envía el mensaje por YCloud al contacto.
+    Con send_whatsapp=true la API envía el mensaje por el provider de la conversación
+    (ycloud o meta).
     """
     _verify_n8n_key(x_n8n_api_key)
 
@@ -54,20 +57,28 @@ async def n8n_inbound(
 
     if body.message:
         message_payload = dict(body.message.payload)
-        ycloud_response = None
+        external_id = None
 
         if (
             body.send_whatsapp
             and conversation.channel == Channel.WHATSAPP
             and body.message.content
         ):
+            provider_name = get_conversation_provider(conversation)
+            provider = get_whatsapp_provider(provider_name)
+            phone_number_id = (conversation.metadata_ or {}).get("phone_number_id")
+            if not phone_number_id and conversation.ycloud_phone_number_id:
+                phone_number_id = conversation.ycloud_phone_number_id
             try:
-                ycloud_response = await send_whatsapp_text(
+                result = await provider.send_text(
                     to=conversation.contact.phone,
                     text=body.message.content,
+                    phone_number_id=str(phone_number_id) if phone_number_id else None,
                 )
-                message_payload["ycloud"] = ycloud_response
-            except YCloudError as exc:
+                message_payload["provider"] = provider_name
+                message_payload[provider_name] = result.raw
+                external_id = result.external_id
+            except WhatsAppProviderError as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         created_message = await create_message(
@@ -78,11 +89,7 @@ async def n8n_inbound(
             content=body.message.content,
             media_url=body.message.media_url,
             payload=message_payload,
-            external_id=(
-                str(ycloud_response.get("id"))
-                if isinstance(ycloud_response, dict) and ycloud_response.get("id")
-                else None
-            ),
+            external_id=external_id,
         )
 
     conversation = await get_conversation_with_relations(db, body.conversation_id)
@@ -102,6 +109,7 @@ async def n8n_inbound(
                 "status": conversation.status.value,
                 "channel": conversation.channel.value,
                 "tags": [tag.name for tag in conversation.tags],
+                "whatsapp_provider": get_conversation_provider(conversation),
             },
             "contact": {
                 "id": str(conversation.contact.id),

@@ -46,6 +46,7 @@ async def get_open_conversation(
     db: AsyncSession,
     contact_id: UUID,
     channel: Channel = Channel.WHATSAPP,
+    whatsapp_provider: str | None = None,
 ) -> Conversation | None:
     stmt = (
         select(Conversation)
@@ -56,9 +57,17 @@ async def get_open_conversation(
         )
         .options(selectinload(Conversation.contact), selectinload(Conversation.tags))
         .order_by(Conversation.updated_at.desc())
-        .limit(1)
     )
-    return await db.scalar(stmt)
+    rows = list((await db.scalars(stmt)).all())
+    if not whatsapp_provider:
+        return rows[0] if rows else None
+
+    from app.whatsapp.conversation_provider import get_conversation_provider
+
+    for conversation in rows:
+        if get_conversation_provider(conversation) == whatsapp_provider:
+            return conversation
+    return None
 
 
 async def create_conversation(
@@ -66,12 +75,21 @@ async def create_conversation(
     contact_id: UUID,
     channel: Channel = Channel.WHATSAPP,
     ycloud_phone_number_id: str | None = None,
+    whatsapp_provider: str | None = None,
+    phone_number_id: str | None = None,
 ) -> Conversation:
+    from app.whatsapp.conversation_provider import normalize_provider
+
     bot_activo = await db.scalar(select(Tag).where(Tag.name == "bot-activo"))
+    provider = normalize_provider(whatsapp_provider)
+    metadata: dict = {"whatsapp_provider": provider}
+    if phone_number_id:
+        metadata["phone_number_id"] = phone_number_id
     conversation = Conversation(
         contact_id=contact_id,
         channel=channel,
         ycloud_phone_number_id=ycloud_phone_number_id,
+        metadata_=metadata,
         tags=[bot_activo] if bot_activo else [],
     )
     db.add(conversation)

@@ -69,6 +69,20 @@ class ConversationListItem(BaseModel):
     updated_at: datetime
     contact: ContactRead | None = None
     tags: list[TagRead] = []
+    whatsapp_provider: str | None = None
+
+
+class MetaWebhookResponse(BaseModel):
+    ok: bool
+    processed: int = 0
+    conversation_id: UUID | None = None
+    message_id: UUID | None = None
+    duplicate: bool = False
+
+
+class WhatsAppProvidersStatus(BaseModel):
+    default_provider: str
+    providers: list[dict]
 
 
 class TagsMutation(BaseModel):

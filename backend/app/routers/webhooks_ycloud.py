@@ -1,18 +1,15 @@
+"""Webhook YCloud: mantiene el flujo actual y marca provider=ycloud."""
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.schemas.conversation import YCloudWebhookResponse
-from app.services.conversation import (
-    create_conversation,
-    create_message,
-    get_conversation_with_relations,
-    get_open_conversation,
-    get_or_create_contact,
-)
 from app.services.events import publish_event
 from app.services.ycloud import parse_ycloud_inbound
+from app.whatsapp.base import PROVIDER_YCLOUD, NormalizedInbound
+from app.whatsapp.inbound import persist_inbound
 
 router = APIRouter(prefix="/webhooks/ycloud", tags=["webhooks-ycloud"])
 
@@ -41,37 +38,32 @@ async def ycloud_inbound(
     if not phone:
         raise HTTPException(status_code=422, detail="Missing sender phone in YCloud payload")
 
-    contact = await get_or_create_contact(db, phone=phone, name=parsed.get("contact_name"))
-    conversation = await get_open_conversation(db, contact.id, channel=parsed["channel"])
-    if not conversation:
-        conversation = await create_conversation(
-            db,
-            contact_id=contact.id,
-            channel=parsed["channel"],
-            ycloud_phone_number_id=parsed.get("ycloud_phone_number_id"),
-        )
-
-    message = await create_message(
-        db,
-        conversation,
-        direction=parsed["direction"],
-        sender_type=parsed["sender_type"],
+    event = NormalizedInbound(
+        provider=PROVIDER_YCLOUD,
+        external_id=parsed.get("external_id"),
+        from_phone=phone,
+        to_phone=parsed.get("to_phone"),
+        phone_number_id=parsed.get("ycloud_phone_number_id"),
+        contact_name=parsed.get("contact_name"),
         content=parsed.get("content"),
         media_url=parsed.get("media_url"),
-        payload={"raw": parsed.get("raw", {})},
-        external_id=parsed.get("external_id"),
+        channel=parsed["channel"],
+        sender_type=parsed["sender_type"],
+        direction=parsed["direction"],
+        raw=parsed.get("raw") or payload,
     )
 
-    if message is None:
+    result = await persist_inbound(db, event)
+    conversation = result.conversation
+    message = result.message
+    contact = conversation.contact
+
+    if result.duplicate or message is None:
         return YCloudWebhookResponse(
             ok=True,
             conversation_id=conversation.id,
             duplicate=True,
         )
-
-    conversation = await get_conversation_with_relations(db, conversation.id)
-    if conversation is None:
-        raise HTTPException(status_code=500, detail="Conversation not found after save")
 
     event_payload = {
         "conversation": {
@@ -79,11 +71,12 @@ async def ycloud_inbound(
             "status": conversation.status.value,
             "channel": conversation.channel.value,
             "tags": [tag.name for tag in conversation.tags],
+            "whatsapp_provider": PROVIDER_YCLOUD,
         },
         "contact": {
-            "id": str(contact.id),
-            "phone": contact.phone,
-            "name": contact.name,
+            "id": str(contact.id) if contact else str(result.contact_id),
+            "phone": contact.phone if contact else None,
+            "name": contact.name if contact else None,
         },
         "message": {
             "id": str(message.id),
@@ -99,4 +92,5 @@ async def ycloud_inbound(
         ok=True,
         conversation_id=conversation.id,
         message_id=message.id,
+        duplicate=False,
     )

@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.entities import ConversationStatus, MessageDirection, SenderType
+from app.config import settings
 from app.schemas.conversation import (
     AgentMessageCreate,
     ConversationActionResponse,
     ConversationListItem,
     ConversationRead,
     MessageRead,
+    WhatsAppProvidersStatus,
 )
 from app.services.conversation import (
     create_message,
@@ -21,8 +23,24 @@ from app.services.conversation import (
 )
 from app.services.events import publish_event
 from app.services.outbound import send_conversation_reply
+from app.whatsapp.conversation_provider import get_conversation_provider, normalize_provider
+from app.whatsapp.factory import list_provider_status
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+
+def _list_item(conversation) -> ConversationListItem:
+    item = ConversationListItem.model_validate(conversation)
+    item.whatsapp_provider = get_conversation_provider(conversation)
+    return item
+
+
+@router.get("/whatsapp-providers", response_model=WhatsAppProvidersStatus)
+async def whatsapp_providers_status() -> WhatsAppProvidersStatus:
+    return WhatsAppProvidersStatus(
+        default_provider=normalize_provider(settings.whatsapp_default_provider),
+        providers=list_provider_status(),
+    )
 
 
 @router.get("", response_model=list[ConversationListItem])
@@ -31,7 +49,7 @@ async def get_conversations(
     limit: int = 50,
 ) -> list[ConversationListItem]:
     conversations = await list_conversations(db, limit=limit)
-    return [ConversationListItem.model_validate(item) for item in conversations]
+    return [_list_item(item) for item in conversations]
 
 
 @router.get("/{conversation_id}", response_model=ConversationRead)

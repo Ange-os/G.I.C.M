@@ -23,6 +23,12 @@ defineProps<{
         {{ STATUS_LABELS[conversation.status] }}
       </span>
       <span class="channel">{{ conversation.channel }}</span>
+      <span
+        v-if="conversation.channel === 'whatsapp' && conversation.whatsapp_provider"
+        class="tag"
+      >
+        {{ conversation.whatsapp_provider }}
+      </span>
     </div>
     <div v-if="conversation.tags.length" class="conversation-item__tags">
       <span v-for="tag in conversation.tags" :key="tag.id" class="tag">{{ tag.name }}</span>
