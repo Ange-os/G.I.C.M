@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     n8n_webhook_url: str | None = None
     n8n_api_key: str | None = None
+    # Etapa 2.7: outbound Instagram vía n8n (credenciales Meta quedan en n8n)
+    n8n_instagram_outbound_url: str | None = None
     ycloud_webhook_secret: str | None = None
     ycloud_api_key: str | None = None
     ycloud_from_number: str | None = None

@@ -29,6 +29,7 @@ defineProps<{
       >
         {{ conversation.whatsapp_provider }}
       </span>
+      <span v-else-if="conversation.channel === 'instagram'" class="tag">meta</span>
     </div>
     <div v-if="conversation.tags.length" class="conversation-item__tags">
       <span v-for="tag in conversation.tags" :key="tag.id" class="tag">{{ tag.name }}</span>

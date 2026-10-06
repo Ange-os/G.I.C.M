@@ -33,6 +33,7 @@ SENDER_LABELS = {
 CHANNEL_LABELS = {
     "whatsapp": "WhatsApp",
     "web": "la web",
+    "instagram": "Instagram",
 }
 
 

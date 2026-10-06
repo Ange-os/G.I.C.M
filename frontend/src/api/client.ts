@@ -95,7 +95,7 @@ export interface Conversation {
   id: string;
   contact_id: string;
   status: "open" | "pending_human" | "resolved";
-  channel: "whatsapp" | "web";
+  channel: "whatsapp" | "web" | "instagram";
   created_at: string;
   updated_at: string;
   contact?: Contact | null;
@@ -351,7 +351,11 @@ export function formatDateTime(value: string) {
 }
 
 export function displayContact(conversation: Conversation) {
-  return conversation.contact?.name || conversation.contact?.phone || "Sin contacto";
+  const name = conversation.contact?.name;
+  if (name) return name;
+  const phone = conversation.contact?.phone;
+  if (phone?.startsWith("ig:")) return `Instagram ${phone.slice(3, 9)}…`;
+  return phone || "Sin contacto";
 }
 
 export function hasTag(conversation: Conversation, tagName: string) {

@@ -42,6 +42,46 @@ async def get_or_create_contact(db: AsyncSession, phone: str, name: str | None =
     return contact
 
 
+def instagram_contact_key(sender_id: str) -> str:
+    """Clave estable en Contact.phone para un usuario de Instagram (IGSID)."""
+    key = f"ig:{sender_id.strip()}"
+    if len(key) <= 32:
+        return key
+    import hashlib
+
+    return "ig:" + hashlib.sha1(sender_id.encode("utf-8")).hexdigest()[:29]
+
+
+async def get_or_create_instagram_contact(
+    db: AsyncSession,
+    sender_id: str,
+    name: str | None = None,
+) -> Contact:
+    sender_id = sender_id.strip()
+    if not sender_id:
+        raise ValueError("sender_id de Instagram vacío")
+
+    key = instagram_contact_key(sender_id)
+    contact = await db.scalar(select(Contact).where(Contact.phone == key))
+    if contact:
+        meta = dict(contact.metadata_ or {})
+        if meta.get("instagram_sender_id") != sender_id:
+            meta["instagram_sender_id"] = sender_id
+            contact.metadata_ = meta
+        if name and not contact.name:
+            contact.name = name
+        return contact
+
+    contact = Contact(
+        phone=key,
+        name=name or f"IG {sender_id[-6:]}",
+        metadata_={"instagram_sender_id": sender_id, "channel": "instagram"},
+    )
+    db.add(contact)
+    await db.flush()
+    return contact
+
+
 async def get_open_conversation(
     db: AsyncSession,
     contact_id: UUID,
@@ -77,19 +117,24 @@ async def create_conversation(
     ycloud_phone_number_id: str | None = None,
     whatsapp_provider: str | None = None,
     phone_number_id: str | None = None,
+    metadata: dict | None = None,
 ) -> Conversation:
     from app.whatsapp.conversation_provider import normalize_provider
 
     bot_activo = await db.scalar(select(Tag).where(Tag.name == "bot-activo"))
-    provider = normalize_provider(whatsapp_provider)
-    metadata: dict = {"whatsapp_provider": provider}
-    if phone_number_id:
-        metadata["phone_number_id"] = phone_number_id
+    meta: dict = dict(metadata or {})
+    if channel == Channel.WHATSAPP:
+        meta.setdefault("whatsapp_provider", normalize_provider(whatsapp_provider))
+        if phone_number_id:
+            meta["phone_number_id"] = phone_number_id
+    elif channel == Channel.INSTAGRAM:
+        meta.setdefault("provider", "meta")
+        meta.setdefault("channel", "instagram")
     conversation = Conversation(
         contact_id=contact_id,
         channel=channel,
         ycloud_phone_number_id=ycloud_phone_number_id,
-        metadata_=metadata,
+        metadata_=meta,
         tags=[bot_activo] if bot_activo else [],
     )
     db.add(conversation)

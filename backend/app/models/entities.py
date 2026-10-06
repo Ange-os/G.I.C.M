@@ -12,6 +12,7 @@ from app.database import Base
 class Channel(str, enum.Enum):
     WHATSAPP = "whatsapp"
     WEB = "web"
+    INSTAGRAM = "instagram"
 
 
 class ConversationStatus(str, enum.Enum):
