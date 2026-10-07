@@ -7,6 +7,7 @@ from app.config import settings
 from app.database import get_db
 from app.schemas.xia import XiaWebInbound, XiaWebhookResponse
 from app.services.events import publish_event
+from app.services.handling import handling_mode_from_tags
 from app.web.inbound import persist_web_inbound
 
 router = APIRouter(prefix="/webhooks/xia", tags=["webhooks-xia"])
@@ -62,6 +63,7 @@ async def xia_web_inbound(
             "status": conversation.status.value,
             "channel": conversation.channel.value,
             "tags": [tag.name for tag in conversation.tags],
+            "handling_mode": handling_mode_from_tags(tag.name for tag in conversation.tags),
             "provider": "xia",
         },
         "contact": {

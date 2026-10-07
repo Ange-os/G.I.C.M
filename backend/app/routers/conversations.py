@@ -3,9 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.models.entities import ConversationStatus, MessageDirection, SenderType
 from app.config import settings
+from app.database import get_db
+from app.models.entities import ConversationStatus, MessageDirection, SenderType, User
+from app.routers.auth import get_current_user
 from app.schemas.conversation import (
     AgentMessageCreate,
     ConversationActionResponse,
@@ -22,6 +23,7 @@ from app.services.conversation import (
     update_conversation_tags,
 )
 from app.services.events import publish_event
+from app.services.handling import handling_mode_from_tags
 from app.services.outbound import send_conversation_reply
 from app.whatsapp.conversation_provider import get_conversation_provider, normalize_provider
 from app.whatsapp.factory import list_provider_status
@@ -29,10 +31,21 @@ from app.whatsapp.factory import list_provider_status
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
+def _handling_mode(conversation) -> str:
+    return handling_mode_from_tags(tag.name for tag in conversation.tags)
+
+
 def _list_item(conversation) -> ConversationListItem:
     item = ConversationListItem.model_validate(conversation)
     item.whatsapp_provider = get_conversation_provider(conversation)
+    item.handling_mode = _handling_mode(conversation)  # type: ignore[assignment]
     return item
+
+
+def _read(conversation) -> ConversationRead:
+    data = ConversationRead.model_validate(conversation)
+    data.handling_mode = _handling_mode(conversation)  # type: ignore[assignment]
+    return data
 
 
 @router.get("/whatsapp-providers", response_model=WhatsAppProvidersStatus)
@@ -60,8 +73,7 @@ async def get_conversation(
     conversation = await get_conversation_with_relations(db, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return ConversationRead.model_validate(conversation)
-
+    return _read(conversation)
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageRead])
 async def get_messages(
@@ -82,8 +94,9 @@ async def send_agent_message(
     body: AgentMessageCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
-    """Envía un mensaje como agente humano. Opcionalmente lo entrega por WhatsApp."""
+    """Envía un mensaje como agente humano. Opcionalmente lo entrega por el canal."""
     conversation = await get_conversation_with_relations(db, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -118,6 +131,7 @@ async def send_agent_message(
                 "status": conversation.status.value,
                 "channel": conversation.channel.value,
                 "tags": [tag.name for tag in conversation.tags],
+                "handling_mode": _handling_mode(conversation),
             },
             "contact": {
                 "id": str(conversation.contact.id),
@@ -135,7 +149,7 @@ async def send_agent_message(
     )
 
     return ConversationActionResponse(
-        conversation=ConversationRead.model_validate(conversation),
+        conversation=_read(conversation),
         message=MessageRead.model_validate(message),
     )
 
@@ -144,14 +158,25 @@ async def send_agent_message(
 async def take_conversation(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
-    """Toma la conversación: apaga el bot y marca esperando humano."""
+    """Toma la conversación: atención humana; motores externos deben pausar."""
     conversation = await get_conversation_with_relations(db, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     if conversation.status == ConversationStatus.RESOLVED:
         raise HTTPException(status_code=409, detail="Conversation is resolved")
+
+    operator = current_user.name or current_user.email
+    meta = dict(conversation.metadata_ or {})
+    meta["takeover"] = {
+        "mode": "human",
+        "by_user_id": str(current_user.id),
+        "by_name": operator,
+        "by_email": current_user.email,
+    }
+    conversation.metadata_ = meta
 
     conversation = await update_conversation_tags(
         db,
@@ -166,7 +191,13 @@ async def take_conversation(
         conversation,
         direction=MessageDirection.OUTBOUND,
         sender_type=SenderType.SYSTEM,
-        content="Un agente tomó la conversación. El bot está desactivado.",
+        content=f"{operator} tomó la conversación. Atención humana (bot externo pausado).",
+        payload={
+            "audit": "takeover",
+            "action": "take",
+            "by_user_id": str(current_user.id),
+            "by_name": operator,
+        },
     )
 
     conversation = await get_conversation_with_relations(db, conversation_id)
@@ -174,7 +205,7 @@ async def take_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return ConversationActionResponse(
-        conversation=ConversationRead.model_validate(conversation),
+        conversation=_read(conversation),
         message=MessageRead.model_validate(system_message) if system_message else None,
     )
 
@@ -183,14 +214,25 @@ async def take_conversation(
 async def release_bot(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
-    """Reactiva el bot y deja la conversación abierta."""
+    """Libera la conversación: vuelve atención automática."""
     conversation = await get_conversation_with_relations(db, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     if conversation.status == ConversationStatus.RESOLVED:
         raise HTTPException(status_code=409, detail="Conversation is resolved")
+
+    operator = current_user.name or current_user.email
+    meta = dict(conversation.metadata_ or {})
+    meta["takeover"] = {
+        "mode": "automatic",
+        "released_by_user_id": str(current_user.id),
+        "released_by_name": operator,
+        "released_by_email": current_user.email,
+    }
+    conversation.metadata_ = meta
 
     conversation = await update_conversation_tags(
         db,
@@ -200,13 +242,27 @@ async def release_bot(
     )
     conversation.status = ConversationStatus.OPEN
 
+    system_message = await create_message(
+        db,
+        conversation,
+        direction=MessageDirection.OUTBOUND,
+        sender_type=SenderType.SYSTEM,
+        content=f"{operator} liberó la conversación. Atención automática reactivada.",
+        payload={
+            "audit": "takeover",
+            "action": "release",
+            "by_user_id": str(current_user.id),
+            "by_name": operator,
+        },
+    )
+
     conversation = await get_conversation_with_relations(db, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return ConversationActionResponse(
-        conversation=ConversationRead.model_validate(conversation),
-        message=None,
+        conversation=_read(conversation),
+        message=MessageRead.model_validate(system_message) if system_message else None,
     )
 
 
@@ -214,6 +270,7 @@ async def release_bot(
 async def resolve_conversation(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
     """Marca la conversación como resuelta."""
     conversation = await get_conversation_with_relations(db, conversation_id)
@@ -228,6 +285,6 @@ async def resolve_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return ConversationActionResponse(
-        conversation=ConversationRead.model_validate(conversation),
+        conversation=_read(conversation),
         message=None,
     )

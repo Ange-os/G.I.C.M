@@ -8,6 +8,7 @@ from app.database import get_db
 from app.instagram.inbound import persist_instagram_inbound
 from app.schemas.instagram import InstagramN8nInbound, InstagramWebhookResponse
 from app.services.events import publish_event
+from app.services.handling import handling_mode_from_tags
 
 router = APIRouter(prefix="/webhooks/n8n", tags=["webhooks-n8n-instagram"])
 
@@ -64,6 +65,7 @@ async def n8n_instagram_inbound(
             "status": conversation.status.value,
             "channel": conversation.channel.value,
             "tags": [tag.name for tag in conversation.tags],
+            "handling_mode": handling_mode_from_tags(tag.name for tag in conversation.tags),
             "provider": "meta",
         },
         "contact": {

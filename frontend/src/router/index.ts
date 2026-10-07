@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { getToken } from "../api/session";
 import AppShell from "../components/AppShell.vue";
 import LoginView from "../views/LoginView.vue";
+import SettingsView from "../views/SettingsView.vue";
 import WorkspaceView from "../views/WorkspaceView.vue";
 
 const router = createRouter({
@@ -18,6 +19,11 @@ const router = createRouter({
           path: "inbox/:id?",
           name: "inbox",
           component: WorkspaceView,
+        },
+        {
+          path: "settings",
+          name: "settings",
+          component: SettingsView,
         },
         { path: "assistant", redirect: "/inbox" },
         { path: "tools", redirect: "/inbox" },

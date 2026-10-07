@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,6 +10,8 @@ from app.models.entities import (
     MessageDirection,
     SenderType,
 )
+
+HandlingMode = Literal["automatic", "human"]
 
 
 class ContactRead(BaseModel):
@@ -56,6 +59,7 @@ class ConversationRead(BaseModel):
     updated_at: datetime
     contact: ContactRead | None = None
     tags: list[TagRead] = []
+    handling_mode: HandlingMode = "automatic"
 
 
 class ConversationListItem(BaseModel):
@@ -70,6 +74,7 @@ class ConversationListItem(BaseModel):
     contact: ContactRead | None = None
     tags: list[TagRead] = []
     whatsapp_provider: str | None = None
+    handling_mode: HandlingMode = "automatic"
 
 
 class MetaWebhookResponse(BaseModel):

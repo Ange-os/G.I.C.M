@@ -13,6 +13,7 @@ import {
   sendAgentMessage,
   takeConversation,
 } from "../api/client";
+import { CHANNEL_FILTERS, channelLabel, type ChannelId } from "../channels";
 import AgentReplyBox from "../components/AgentReplyBox.vue";
 import ConversationListItem from "../components/ConversationListItem.vue";
 import ChatMessage from "../components/ChatMessage.vue";
@@ -33,10 +34,14 @@ const actionLoading = ref(false);
 const sendingMessage = ref(false);
 const error = ref<string | null>(null);
 const threadRef = ref<HTMLElement | null>(null);
+const channelFilter = ref<ChannelId | "all">("all");
 
 const selectedId = computed(() => props.id || (route.params.id as string | undefined));
 const isBotOff = computed(() =>
-  selectedConversation.value ? hasTag(selectedConversation.value, "bot-apagado") : false,
+  selectedConversation.value
+    ? selectedConversation.value.handling_mode === "human" ||
+      hasTag(selectedConversation.value, "bot-apagado")
+    : false,
 );
 const isResolved = computed(() => selectedConversation.value?.status === "resolved");
 const canTake = computed(() => selectedConversation.value && !isBotOff.value && !isResolved.value);
@@ -47,6 +52,14 @@ const replyDisabledReason = computed(() => {
   if (isResolved.value) return "La conversación está resuelta.";
   if (!isBotOff.value) return "Tomá la conversación para responder como agente.";
   return "";
+});
+const handlingLabel = computed(() =>
+  isBotOff.value ? "Atención humana" : "Atención automática",
+);
+
+const filteredConversations = computed(() => {
+  if (channelFilter.value === "all") return conversations.value;
+  return conversations.value.filter((c) => c.channel === channelFilter.value);
 });
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -130,10 +143,12 @@ async function handleReleaseBot() {
   try {
     const result = await releaseBot(selectedId.value);
     selectedConversation.value = result.conversation;
+    if (result.message) messages.value = [...messages.value, result.message];
     await loadConversations();
     error.value = null;
+    await scrollToBottom();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "No se pudo reactivar el bot";
+    error.value = e instanceof Error ? e.message : "No se pudo liberar la conversación";
   } finally {
     actionLoading.value = false;
   }
@@ -200,19 +215,44 @@ onUnmounted(() => {
       <header class="inbox__sidebar-header">
         <div>
           <h1>Inbox</h1>
-          <p>{{ conversations.length }} conversaciones</p>
+          <p>
+            {{ filteredConversations.length }}
+            <template v-if="channelFilter !== 'all'">
+              / {{ conversations.length }}
+            </template>
+            conversaciones
+          </p>
         </div>
         <button class="btn-ghost" type="button" @click="refreshAll">Actualizar</button>
       </header>
 
+      <div class="inbox__channel-filters" role="toolbar" aria-label="Filtrar por canal">
+        <button
+          v-for="opt in CHANNEL_FILTERS"
+          :key="opt.id"
+          type="button"
+          class="inbox__filter-chip"
+          :class="{ active: channelFilter === opt.id }"
+          :aria-pressed="channelFilter === opt.id"
+          @click="channelFilter = opt.id"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+
       <p v-if="error" class="error inbox__error">{{ error }}</p>
 
       <div v-if="loadingList" class="inbox__empty">Cargando...</div>
-      <div v-else-if="!conversations.length" class="inbox__empty">
-        Sin conversaciones. Enviá un mensaje de prueba al webhook YCloud.
+      <div v-else-if="!filteredConversations.length" class="inbox__empty">
+        <template v-if="conversations.length">
+          No hay conversaciones en este canal.
+        </template>
+        <template v-else>
+          Sin conversaciones. Enviá un mensaje de prueba al webhook.
+        </template>
       </div>
       <ul v-else class="inbox__list">
-        <li v-for="conversation in conversations" :key="conversation.id">
+        <li v-for="conversation in filteredConversations" :key="conversation.id">
           <button
             type="button"
             class="inbox__list-button"
@@ -240,9 +280,18 @@ onUnmounted(() => {
       <template v-else-if="selectedConversation">
         <header class="inbox__main-header">
           <div>
-            <h2>{{ selectedConversation.contact?.phone }}</h2>
-            <p v-if="selectedConversation.contact?.name">
-              {{ selectedConversation.contact.name }}
+            <h2>
+              {{ selectedConversation.contact?.name || selectedConversation.contact?.phone }}
+            </h2>
+            <p class="inbox__handling-line">
+              <span class="channel">{{ channelLabel(selectedConversation.channel) }}</span>
+              ·
+              <span
+                class="handling"
+                :class="isBotOff ? 'handling--human' : 'handling--auto'"
+              >
+                {{ handlingLabel }}
+              </span>
             </p>
           </div>
           <div class="inbox__header-actions">
@@ -273,7 +322,7 @@ onUnmounted(() => {
                 :disabled="actionLoading"
                 @click="handleReleaseBot"
               >
-                Reactivar bot
+                Liberar conversación
               </button>
               <button
                 v-if="!isResolved"

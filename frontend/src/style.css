@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="light"] {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   line-height: 1.5;
   color: var(--ink);
@@ -26,6 +27,54 @@
   --radius: 4px;
   --radius-lg: 8px;
   --shadow-panel: 0 1px 0 rgba(20, 32, 51, 0.05), 0 12px 30px rgba(20, 32, 51, 0.09);
+  --nav-bg: rgba(247, 249, 247, 0.92);
+  --frame-glow-a: rgba(30, 58, 95, 0.14);
+  --frame-glow-b: rgba(20, 32, 51, 0.07);
+  --frame-grad-top: #edf1f6;
+  /* Acuarela canales (muy diluida) */
+  --wash-whatsapp: rgba(37, 211, 102, 0.1);
+  --wash-whatsapp-edge: rgba(37, 211, 102, 0.28);
+  --wash-instagram: rgba(193, 53, 132, 0.09);
+  --wash-instagram-edge: rgba(225, 48, 108, 0.26);
+  --wash-web: rgba(56, 120, 180, 0.1);
+  --wash-web-edge: rgba(56, 120, 180, 0.28);
+  --wash-default: rgba(90, 106, 126, 0.06);
+  --wash-default-edge: rgba(90, 106, 126, 0.2);
+}
+
+[data-theme="dark"] {
+  --ink: #e6edf5;
+  --ink-muted: #9aabbd;
+  --canvas: #121820;
+  --canvas-deep: #0d1218;
+  --surface: #1a222d;
+  --surface-raised: #222b38;
+  --surface-soft: #2a3443;
+  --line: #334155;
+  --line-strong: #475569;
+  --accent: #8ab4d9;
+  --accent-strong: #c5daf0;
+  --accent-soft: #243447;
+  --accent-wash: #1c2836;
+  --warn-bg: #3d2e14;
+  --warn-ink: #e8c07a;
+  --ok-bg: #1e3328;
+  --ok-ink: #8fd0a4;
+  --danger-bg: #3a2222;
+  --danger-ink: #e8a0a0;
+  --shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.25), 0 12px 30px rgba(0, 0, 0, 0.35);
+  --nav-bg: rgba(18, 24, 32, 0.92);
+  --frame-glow-a: rgba(138, 180, 217, 0.1);
+  --frame-glow-b: rgba(0, 0, 0, 0.35);
+  --frame-grad-top: #161d27;
+  --wash-whatsapp: rgba(37, 211, 102, 0.12);
+  --wash-whatsapp-edge: rgba(37, 211, 102, 0.35);
+  --wash-instagram: rgba(225, 48, 108, 0.12);
+  --wash-instagram-edge: rgba(193, 53, 132, 0.38);
+  --wash-web: rgba(100, 160, 220, 0.12);
+  --wash-web-edge: rgba(100, 160, 220, 0.36);
+  --wash-default: rgba(154, 171, 189, 0.08);
+  --wash-default-edge: rgba(154, 171, 189, 0.22);
 }
 
 * {
@@ -52,9 +101,9 @@ body.is-resizing-workspace {
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(1100px 420px at 8% -10%, rgba(30, 58, 95, 0.14), transparent 52%),
-    radial-gradient(900px 380px at 100% 100%, rgba(20, 32, 51, 0.07), transparent 50%),
-    linear-gradient(160deg, #edf1f6 0%, var(--canvas) 48%, var(--canvas-deep) 100%);
+    radial-gradient(1100px 420px at 8% -10%, var(--frame-glow-a), transparent 52%),
+    radial-gradient(900px 380px at 100% 100%, var(--frame-glow-b), transparent 50%),
+    linear-gradient(160deg, var(--frame-grad-top) 0%, var(--canvas) 48%, var(--canvas-deep) 100%);
 }
 
 .error {
@@ -157,6 +206,37 @@ body.is-resizing-workspace {
   font-size: 0.85rem;
 }
 
+.inbox__channel-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.inbox__filter-chip {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-muted);
+  border-radius: var(--radius);
+  padding: 0.28rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inbox__filter-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.inbox__filter-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .inbox__error {
   margin: 0.75rem 1rem 0;
 }
@@ -177,19 +257,50 @@ body.is-resizing-workspace {
   padding: 0;
   cursor: pointer;
   text-align: left;
+  margin-bottom: 0.25rem;
 }
 
 .conversation-item {
   padding: 0.85rem 0.9rem;
   border-radius: var(--radius);
   border: 1px solid transparent;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  background:
+    linear-gradient(90deg, var(--channel-wash, transparent) 0%, transparent 42%),
+    transparent;
+  box-shadow: inset 2px 0 0 var(--channel-edge, transparent);
+}
+
+.conversation-item.channel-wash--whatsapp {
+  --channel-wash: var(--wash-whatsapp);
+  --channel-edge: var(--wash-whatsapp-edge);
+}
+
+.conversation-item.channel-wash--instagram {
+  --channel-wash: var(--wash-instagram);
+  --channel-edge: var(--wash-instagram-edge);
+}
+
+.conversation-item.channel-wash--web {
+  --channel-wash: var(--wash-web);
+  --channel-edge: var(--wash-web-edge);
+}
+
+.conversation-item.channel-wash--default {
+  --channel-wash: var(--wash-default);
+  --channel-edge: var(--wash-default-edge);
 }
 
 .conversation-item.selected,
 .inbox__list-button:hover .conversation-item {
-  background: var(--surface-raised);
+  background:
+    linear-gradient(90deg, var(--channel-wash, transparent) 0%, transparent 36%),
+    var(--surface-raised);
   border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.conversation-item.selected {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -210,9 +321,33 @@ body.is-resizing-workspace {
   font-size: 0.75rem;
 }
 
+.handling {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.handling--human {
+  color: var(--warn-ink);
+}
+
+.handling--auto {
+  color: var(--ink-muted);
+}
+
+.inbox__handling-line {
+  margin: 0.2rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+
 .conversation-item__meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.45rem;
 }
@@ -425,7 +560,7 @@ body.is-resizing-workspace {
   justify-content: space-between;
   gap: 1rem;
   padding: 0 1rem;
-  background: rgba(247, 249, 247, 0.92);
+  background: var(--nav-bg);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(8px);
 }
@@ -442,6 +577,7 @@ body.is-resizing-workspace {
   letter-spacing: -0.02em;
   color: var(--accent-strong);
   font-size: 1.05rem;
+  text-decoration: none;
 }
 
 .app-shell-nav__link {
@@ -1400,4 +1536,125 @@ body.is-resizing-workspace {
   justify-content: flex-end;
   gap: 0.45rem;
   margin-top: 0.75rem;
+}
+
+/* Settings */
+.settings {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  height: calc(100vh - var(--app-nav-height));
+  min-height: 0;
+  background: var(--surface-raised);
+}
+
+.settings__nav {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  padding: 1.25rem 1rem;
+}
+
+.settings__nav h1 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+
+.settings__nav nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.settings__nav-item {
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings__nav-item:hover {
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+.settings__nav-item.active {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--line);
+}
+
+.settings__main {
+  padding: 1.5rem 1.75rem;
+  overflow-y: auto;
+}
+
+.settings__panel h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.settings__lead {
+  margin: 0 0 1.25rem;
+  color: var(--ink-muted);
+  max-width: 40rem;
+}
+
+.settings__fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.1rem;
+  max-width: 28rem;
+  background: var(--surface);
+}
+
+.settings__fieldset legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.settings__radio {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.45rem 0;
+  cursor: pointer;
+}
+
+.settings__future {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--ink-muted);
+  line-height: 1.7;
+}
+
+.settings__note {
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  max-width: 40rem;
+}
+
+.settings__note code {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 720px) {
+  .settings {
+    grid-template-columns: 1fr;
+  }
+
+  .settings__nav {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings__nav nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }

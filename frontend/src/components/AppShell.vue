@@ -33,7 +33,9 @@ function logout() {
   <div class="app-frame">
     <header class="app-shell-nav">
       <nav class="app-shell-nav__links">
-        <span class="app-shell-nav__brand">Conversa</span>
+        <RouterLink class="app-shell-nav__brand" to="/inbox">Conversa</RouterLink>
+        <RouterLink class="app-shell-nav__link" to="/inbox">Inbox</RouterLink>
+        <RouterLink class="app-shell-nav__link" to="/settings">Settings</RouterLink>
       </nav>
       <div class="app-shell-nav__user">
         <span v-if="user">{{ user.name || user.email }} · {{ ROLE_LABELS[user.role] }}</span>

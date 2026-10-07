@@ -91,11 +91,14 @@ export interface Tag {
   description?: string | null;
 }
 
+export type HandlingMode = "automatic" | "human";
+
 export interface Conversation {
   id: string;
   contact_id: string;
   status: "open" | "pending_human" | "resolved";
   channel: "whatsapp" | "web" | "instagram";
+  handling_mode?: HandlingMode;
   created_at: string;
   updated_at: string;
   contact?: Contact | null;
