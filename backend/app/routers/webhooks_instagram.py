@@ -28,12 +28,19 @@ async def n8n_instagram_inbound(
     """
     Recibe mensajes de Instagram ya normalizados por n8n.
 
-    Modalidad A: n8n sigue con el AI Agent; Conversa solo registra en Inbox.
+    - Usuario: isEcho=false → inbound contact
+    - Respuesta Agent/página: isEcho=true o role=bot → outbound bot
+      (contacto = recipientId)
     """
     _verify_n8n_key(x_n8n_api_key)
 
-    if body.is_echo:
-        return InstagramWebhookResponse(ok=True, skipped=True, skip_reason="echo")
+    page_outbound = body.is_page_outbound()
+    if page_outbound and not (body.recipient_id or "").strip():
+        return InstagramWebhookResponse(
+            ok=True,
+            skipped=True,
+            skip_reason="echo_missing_recipient",
+        )
 
     try:
         result = await persist_instagram_inbound(
@@ -44,6 +51,8 @@ async def n8n_instagram_inbound(
             external_id=body.resolved_external_id(),
             contact_name=body.contact_name,
             raw=body.model_dump(by_alias=True),
+            page_outbound=page_outbound,
+            role=body.role,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -51,6 +60,9 @@ async def n8n_instagram_inbound(
     conversation = result.conversation
     message = result.message
     contact = conversation.contact
+    user_igsid = (conversation.metadata_ or {}).get("instagram_sender_id") or (
+        body.recipient_id if page_outbound else body.sender_id
+    )
 
     if result.duplicate or message is None:
         return InstagramWebhookResponse(
@@ -72,7 +84,7 @@ async def n8n_instagram_inbound(
             "id": str(contact.id) if contact else str(result.contact_id),
             "phone": contact.phone if contact else None,
             "name": contact.name if contact else None,
-            "instagram_sender_id": body.sender_id,
+            "instagram_sender_id": user_igsid,
         },
         "message": {
             "id": str(message.id),
@@ -82,6 +94,7 @@ async def n8n_instagram_inbound(
         },
         "case": None,
     }
+    # Solo publicar a Redis; Instagram no dispara conversa-events (events.py).
     background_tasks.add_task(publish_event, "conversation.message.created", event_payload)
 
     return InstagramWebhookResponse(

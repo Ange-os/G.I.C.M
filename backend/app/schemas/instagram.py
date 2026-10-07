@@ -14,6 +14,8 @@ class InstagramN8nInbound(BaseModel):
     text: str | None = None
     timestamp: str | None = None
     is_echo: bool = Field(default=False, alias="isEcho")
+    # contact = usuario; bot/agent = respuesta de la página (espejo en Inbox)
+    role: str | None = None
     contact_name: str | None = Field(default=None, alias="contactName")
 
     model_config = {"populate_by_name": True}
@@ -21,6 +23,13 @@ class InstagramN8nInbound(BaseModel):
     def resolved_external_id(self) -> str | None:
         value = self.external_id or self.mid
         return value.strip() if value else None
+
+    def is_page_outbound(self) -> bool:
+        """Respuesta de la página / Agent (echo) hacia el usuario."""
+        role = (self.role or "").strip().lower()
+        if role in {"bot", "agent"}:
+            return True
+        return bool(self.is_echo)
 
 
 class InstagramWebhookResponse(BaseModel):

@@ -533,7 +533,7 @@ body.is-resizing-workspace {
 }
 
 .agent-reply__input {
-  color: black;
+  color: var(--ink);
   width: 100%;
   resize: vertical;
   min-height: 72px;
