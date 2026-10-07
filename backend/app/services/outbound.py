@@ -5,11 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.instagram.provider import InstagramProviderError, MetaInstagramProvider
 from app.models.entities import Channel, Conversation, Message, MessageDirection, SenderType
 from app.services.conversation import create_message, get_conversation_with_relations
+from app.web.provider import XiaWebProvider, XiaWebProviderError
 from app.whatsapp.base import WhatsAppProviderError
 from app.whatsapp.conversation_provider import get_conversation_provider
 from app.whatsapp.factory import get_whatsapp_provider
 
 _instagram = MetaInstagramProvider()
+_xia_web = XiaWebProvider()
 
 
 def _instagram_recipient_id(conversation: Conversation) -> str | None:
@@ -27,6 +29,21 @@ def _instagram_recipient_id(conversation: Conversation) -> str | None:
     return None
 
 
+def _web_sender_id(conversation: Conversation) -> str | None:
+    meta = conversation.metadata_ or {}
+    sender = meta.get("xia_sender_id")
+    if isinstance(sender, str) and sender.strip():
+        return sender.strip()
+    contact = conversation.contact
+    if contact and contact.metadata_:
+        sender = contact.metadata_.get("xia_sender_id")
+        if isinstance(sender, str) and sender.strip():
+            return sender.strip()
+    if contact and contact.phone.startswith("web:"):
+        return contact.phone.removeprefix("web:")
+    return None
+
+
 async def send_conversation_reply(
     db: AsyncSession,
     conversation_id: UUID,
@@ -35,7 +52,7 @@ async def send_conversation_reply(
     sender_type: SenderType,
     send_whatsapp: bool = False,
 ) -> tuple[Conversation, Message]:
-    """Persiste un outbound y, si corresponde, lo entrega por WhatsApp o Instagram."""
+    """Persiste un outbound y, si corresponde, lo entrega por WhatsApp, Instagram o web/xIA."""
     conversation = await get_conversation_with_relations(db, conversation_id)
     if not conversation:
         raise ValueError("Conversation not found")
@@ -99,6 +116,24 @@ async def send_conversation_reply(
                 "provider": "meta",
                 "channel": "instagram",
                 "instagram_error": str(exc),
+            }
+
+    elif deliver and conversation.channel == Channel.WEB:
+        sender_id = _web_sender_id(conversation)
+        try:
+            if not sender_id:
+                raise XiaWebProviderError("La conversación no tiene xia_sender_id")
+            result = await _xia_web.send_text(sender_id=sender_id, text=content)
+            message.payload = {
+                "provider": "xia",
+                "channel": "web",
+                "xia": result.raw,
+            }
+        except XiaWebProviderError as exc:
+            message.payload = {
+                "provider": "xia",
+                "channel": "web",
+                "xia_error": str(exc),
             }
 
     await db.flush()

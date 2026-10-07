@@ -17,6 +17,7 @@ from app.routers import (
     webhooks_instagram,
     webhooks_meta,
     webhooks_n8n,
+    webhooks_xia,
     webhooks_ycloud,
 )
 from app.services.conversation import seed_default_tags
@@ -26,20 +27,20 @@ from app.services.events import close_redis, get_redis
 logger = logging.getLogger(__name__)
 
 
-async def _ensure_instagram_channel_enum(conn) -> None:
-    """Agrega el valor 'instagram' al enum PostgreSQL si aún no existe."""
-    try:
-        await conn.execute(text("ALTER TYPE channel ADD VALUE IF NOT EXISTS 'instagram'"))
-    except Exception as exc:  # noqa: BLE001
-        # En DBs nuevas create_all ya puede incluirlo; ignorar conflictos.
-        logger.debug("channel enum instagram: %s", exc)
+async def _ensure_channel_enum_values(conn) -> None:
+    """Agrega valores al enum PostgreSQL channel si aún no existen."""
+    for value in ("instagram", "INSTAGRAM", "web", "WEB"):
+        try:
+            await conn.execute(text(f"ALTER TYPE channel ADD VALUE IF NOT EXISTS '{value}'"))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("channel enum %s: %s", value, exc)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await _ensure_instagram_channel_enum(conn)
+        await _ensure_channel_enum_values(conn)
 
     async with async_session() as session:
         await seed_default_tags(session)
@@ -59,7 +60,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Conversa Platform API",
-    description="Conversación embebible: WhatsApp (YCloud/Meta), Instagram (n8n) y agente",
+    description="Conversación embebible: WhatsApp, Instagram, web/xIA y agente",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -79,6 +80,7 @@ app.include_router(webhooks_ycloud.router)
 app.include_router(webhooks_meta.router)
 app.include_router(webhooks_n8n.router)
 app.include_router(webhooks_instagram.router)
+app.include_router(webhooks_xia.router)
 app.include_router(conversations.router)
 
 

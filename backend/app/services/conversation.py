@@ -82,6 +82,58 @@ async def get_or_create_instagram_contact(
     return contact
 
 
+def web_contact_key(sender_id: str) -> str:
+    """Clave estable en Contact.phone para un usuario web (Google sub / xIA)."""
+    key = f"web:{sender_id.strip()}"
+    if len(key) <= 32:
+        return key
+    import hashlib
+
+    return "web:" + hashlib.sha1(sender_id.encode("utf-8")).hexdigest()[:28]
+
+
+async def get_or_create_web_contact(
+    db: AsyncSession,
+    sender_id: str,
+    *,
+    name: str | None = None,
+    email: str | None = None,
+    picture: str | None = None,
+) -> Contact:
+    sender_id = sender_id.strip()
+    if not sender_id:
+        raise ValueError("sender_id web vacío")
+
+    key = web_contact_key(sender_id)
+    contact = await db.scalar(select(Contact).where(Contact.phone == key))
+    meta_update = {
+        "xia_sender_id": sender_id,
+        "channel": "web",
+        "provider": "xia",
+    }
+    if email:
+        meta_update["email"] = email.strip()
+    if picture:
+        meta_update["picture"] = picture.strip()
+
+    if contact:
+        meta = dict(contact.metadata_ or {})
+        meta.update(meta_update)
+        contact.metadata_ = meta
+        if name and (not contact.name or contact.name.startswith("Web ")):
+            contact.name = name
+        return contact
+
+    contact = Contact(
+        phone=key,
+        name=name or (email.split("@")[0] if email else f"Web {sender_id[-6:]}"),
+        metadata_=meta_update,
+    )
+    db.add(contact)
+    await db.flush()
+    return contact
+
+
 async def get_open_conversation(
     db: AsyncSession,
     contact_id: UUID,
@@ -130,6 +182,9 @@ async def create_conversation(
     elif channel == Channel.INSTAGRAM:
         meta.setdefault("provider", "meta")
         meta.setdefault("channel", "instagram")
+    elif channel == Channel.WEB:
+        meta.setdefault("provider", "xia")
+        meta.setdefault("channel", "web")
     conversation = Conversation(
         contact_id=contact_id,
         channel=channel,

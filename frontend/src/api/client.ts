@@ -355,6 +355,7 @@ export function displayContact(conversation: Conversation) {
   if (name) return name;
   const phone = conversation.contact?.phone;
   if (phone?.startsWith("ig:")) return `Instagram ${phone.slice(3, 9)}…`;
+  if (phone?.startsWith("web:")) return `Web ${phone.slice(4, 10)}…`;
   return phone || "Sin contacto";
 }
 
