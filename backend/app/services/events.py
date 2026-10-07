@@ -34,6 +34,27 @@ async def close_redis() -> None:
         _redis_client = None
 
 
+# Canales cuyo bot vive fuera de Conversa (n8n Instagram / xIA). No disparar conversa-events.
+_CHANNELS_SKIP_N8N_BOT = frozenset({"instagram", "web"})
+
+
+def _channel_from_payload(payload: dict[str, Any]) -> str:
+    conversation = payload.get("conversation") or {}
+    if isinstance(conversation, dict):
+        raw = conversation.get("channel") or ""
+    else:
+        raw = ""
+    return str(raw).strip().lower()
+
+
+def _should_forward_to_n8n_bot(payload: dict[str, Any]) -> bool:
+    """Solo WhatsApp usa el bot de N8N_WEBHOOK_URL (conversa-events)."""
+    channel = _channel_from_payload(payload)
+    if not channel:
+        return True
+    return channel not in _CHANNELS_SKIP_N8N_BOT
+
+
 async def publish_event(event: str, payload: dict[str, Any]) -> None:
     """Publica evento en Redis y opcionalmente reenvía a n8n. Nunca bloquea indefinidamente."""
     envelope = {"event": event, **payload}
@@ -48,9 +69,14 @@ async def publish_event(event: str, payload: dict[str, Any]) -> None:
     except Exception as exc:
         logger.warning("Redis publish skipped: %s", exc)
 
-    if settings.n8n_webhook_url:
+    if settings.n8n_webhook_url and _should_forward_to_n8n_bot(payload):
         try:
             async with httpx.AsyncClient(timeout=N8N_TIMEOUT_SECONDS) as http:
                 await http.post(settings.n8n_webhook_url, json=envelope)
         except httpx.HTTPError as exc:
             logger.warning("n8n webhook skipped: %s", exc)
+    elif settings.n8n_webhook_url:
+        logger.debug(
+            "n8n conversa-events omitido para canal=%s",
+            _channel_from_payload(payload) or "?",
+        )
