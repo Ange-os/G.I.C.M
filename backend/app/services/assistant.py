@@ -8,7 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.assistant.agent import run_agent_turn
 from app.assistant.proposals import list_proposals_for_messages
 from app.models.domain import ActionProposal
-from app.models.entities import AssistantMessage, AssistantRole, AssistantThread, Message, User
+from app.models.entities import (
+    AssistantMessage,
+    AssistantRole,
+    AssistantThread,
+    Channel,
+    Message,
+    User,
+    UserRole,
+)
 from app.services.conversation import list_conversations
 
 CONTEXT_CONVERSATIONS = 20
@@ -81,9 +89,15 @@ async def messages_with_actions(
     return messages, proposals
 
 
-async def build_inbox_context(db: AsyncSession) -> str:
-    conversations = await list_conversations(db, limit=CONTEXT_CONVERSATIONS)
+async def build_inbox_context(
+    db: AsyncSession,
+    *,
+    channel: Channel | None = None,
+) -> str:
+    conversations = await list_conversations(db, limit=CONTEXT_CONVERSATIONS, channel=channel)
     if not conversations:
+        if channel == Channel.INSTAGRAM:
+            return "No hay conversaciones de Instagram en el inbox."
         return "No hay conversaciones cargadas en el inbox."
 
     ids = [conversation.id for conversation in conversations]
@@ -167,7 +181,17 @@ async def send_message(
     for message in history_rows[-HISTORY_MESSAGES:]:
         history.append({"role": message.role.value, "content": message.content})
 
-    reply, proposal = await run_agent_turn(db, user, thread.id, history)
+    inbox_context = None
+    if user.role == UserRole.MUESTRA_INSTA:
+        inbox_context = await build_inbox_context(db, channel=Channel.INSTAGRAM)
+
+    reply, proposal = await run_agent_turn(
+        db,
+        user,
+        thread.id,
+        history,
+        inbox_context=inbox_context,
+    )
 
     assistant_message = AssistantMessage(
         thread_id=thread.id,

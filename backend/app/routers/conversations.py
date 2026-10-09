@@ -15,6 +15,7 @@ from app.schemas.conversation import (
     MessageRead,
     WhatsAppProvidersStatus,
 )
+from app.services.access import allowed_channels, require_conversation_access
 from app.services.conversation import (
     create_message,
     get_conversation_messages,
@@ -48,6 +49,18 @@ def _read(conversation) -> ConversationRead:
     return data
 
 
+async def _load_scoped_conversation(
+    db: AsyncSession,
+    conversation_id: UUID,
+    user: User,
+):
+    conversation = await get_conversation_with_relations(db, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    require_conversation_access(user, conversation)
+    return conversation
+
+
 @router.get("/whatsapp-providers", response_model=WhatsAppProvidersStatus)
 async def whatsapp_providers_status() -> WhatsAppProvidersStatus:
     return WhatsAppProvidersStatus(
@@ -59,9 +72,21 @@ async def whatsapp_providers_status() -> WhatsAppProvidersStatus:
 @router.get("", response_model=list[ConversationListItem])
 async def get_conversations(
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     limit: int = 50,
 ) -> list[ConversationListItem]:
-    conversations = await list_conversations(db, limit=limit)
+    channels = allowed_channels(current_user)
+    if channels is None:
+        conversations = await list_conversations(db, limit=limit)
+    elif len(channels) == 1:
+        conversations = await list_conversations(db, limit=limit, channel=next(iter(channels)))
+    else:
+        # Varios canales acotados: listar y filtrar (pocos roles usan esto hoy).
+        conversations = [
+            c
+            for c in await list_conversations(db, limit=max(limit, 50))
+            if c.channel in channels
+        ][:limit]
     return [_list_item(item) for item in conversations]
 
 
@@ -69,21 +94,19 @@ async def get_conversations(
 async def get_conversation(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ConversationRead:
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await _load_scoped_conversation(db, conversation_id, current_user)
     return _read(conversation)
+
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageRead])
 async def get_messages(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> list[MessageRead]:
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
+    await _load_scoped_conversation(db, conversation_id, current_user)
     messages = await get_conversation_messages(db, conversation_id)
     return [MessageRead.model_validate(message) for message in messages]
 
@@ -94,12 +117,10 @@ async def send_agent_message(
     body: AgentMessageCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
     """Envía un mensaje como agente humano. Opcionalmente lo entrega por el canal."""
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await _load_scoped_conversation(db, conversation_id, current_user)
 
     if conversation.status == ConversationStatus.RESOLVED:
         raise HTTPException(status_code=409, detail="Conversation is resolved")
@@ -161,9 +182,7 @@ async def take_conversation(
     current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
     """Toma la conversación: atención humana; motores externos deben pausar."""
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await _load_scoped_conversation(db, conversation_id, current_user)
 
     if conversation.status == ConversationStatus.RESOLVED:
         raise HTTPException(status_code=409, detail="Conversation is resolved")
@@ -217,9 +236,7 @@ async def release_bot(
     current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
     """Libera la conversación: vuelve atención automática."""
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await _load_scoped_conversation(db, conversation_id, current_user)
 
     if conversation.status == ConversationStatus.RESOLVED:
         raise HTTPException(status_code=409, detail="Conversation is resolved")
@@ -270,12 +287,10 @@ async def release_bot(
 async def resolve_conversation(
     conversation_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> ConversationActionResponse:
     """Marca la conversación como resuelta."""
-    conversation = await get_conversation_with_relations(db, conversation_id)
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await _load_scoped_conversation(db, conversation_id, current_user)
 
     conversation.status = ConversationStatus.RESOLVED
     await db.flush()

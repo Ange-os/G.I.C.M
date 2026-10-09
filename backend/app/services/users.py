@@ -91,3 +91,10 @@ async def seed_default_users(db: AsyncSession) -> None:
         name=settings.consejo_name,
         role=UserRole.CONSEJO,
     )
+    await _seed_user(
+        db,
+        email=settings.muestra_insta_email,
+        password=settings.muestra_insta_password,
+        name=settings.muestra_insta_name,
+        role=UserRole.MUESTRA_INSTA,
+    )

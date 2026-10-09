@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "consejo";
+export type UserRole = "admin" | "consejo" | "muestra_insta";
 
 export interface SessionUser {
   id: string;
@@ -37,4 +37,5 @@ export function clearSession() {
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Administración",
   consejo: "Consejo",
+  muestra_insta: "Muestra Instagram",
 };

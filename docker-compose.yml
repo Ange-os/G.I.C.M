@@ -58,6 +58,9 @@ services:
       CONSEJO_EMAIL: ${CONSEJO_EMAIL:-consejo@circulo.local}
       CONSEJO_PASSWORD: ${CONSEJO_PASSWORD:-consejo-circulo}
       CONSEJO_NAME: ${CONSEJO_NAME:-Consejo}
+      MUESTRA_INSTA_EMAIL: ${MUESTRA_INSTA_EMAIL:-muestra-insta@circulo.local}
+      MUESTRA_INSTA_PASSWORD: ${MUESTRA_INSTA_PASSWORD:-muestra-insta}
+      MUESTRA_INSTA_NAME: ${MUESTRA_INSTA_NAME:-Muestra Instagram}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}

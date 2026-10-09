@@ -7,7 +7,8 @@ from uuid import UUID
 
 from app.assistant.tools.base import ToolContext, ToolSpec
 from app.models.domain import AgreementStatus
-from app.models.entities import ConversationStatus
+from app.models.entities import Channel, ConversationStatus, UserRole
+from app.services.access import allowed_channels
 from app.services.conversation import list_conversations
 
 
@@ -91,7 +92,11 @@ async def _search_conversation(
     query: str | None = None,
     status: str | None = None,
 ) -> str:
-    conversations = await list_conversations(ctx.db, limit=30)
+    channels = allowed_channels(ctx.user)
+    channel_filter: Channel | None = None
+    if channels is not None and len(channels) == 1:
+        channel_filter = next(iter(channels))
+    conversations = await list_conversations(ctx.db, limit=30, channel=channel_filter)
     status_filter = None
     if status:
         try:
@@ -102,6 +107,8 @@ async def _search_conversation(
     needle = (query or "").strip().lower()
     results = []
     for conversation in conversations:
+        if channels is not None and conversation.channel not in channels:
+            continue
         if status_filter and conversation.status != status_filter:
             continue
         contact = conversation.contact
@@ -118,13 +125,19 @@ async def _search_conversation(
                 "status": conversation.status.value,
                 "channel": conversation.channel.value,
                 "tags": [tag.name for tag in conversation.tags],
+                "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
             }
         )
         if len(results) >= 10:
             break
 
     if not results:
-        return json.dumps({"results": [], "message": "No encontré conversaciones."})
+        empty_msg = (
+            "No encontré conversaciones de Instagram."
+            if ctx.user.role == UserRole.MUESTRA_INSTA
+            else "No encontré conversaciones."
+        )
+        return json.dumps({"results": [], "message": empty_msg})
     return json.dumps({"results": results}, ensure_ascii=False)
 
 
@@ -185,7 +198,10 @@ READ_TOOL_SPECS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="search_conversation",
-        description="Busca conversaciones del inbox por nombre/teléfono o estado.",
+        description=(
+            "Busca conversaciones del inbox por nombre, teléfono/IG o estado. "
+            "Según el rol, puede estar limitada a un canal (ej. solo Instagram)."
+        ),
         parameters={
             "type": "object",
             "properties": {

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     consejo_email: str | None = None
     consejo_password: str | None = None
     consejo_name: str = "Consejo"
+    muestra_insta_email: str | None = None
+    muestra_insta_password: str | None = None
+    muestra_insta_name: str = "Muestra Instagram"
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"

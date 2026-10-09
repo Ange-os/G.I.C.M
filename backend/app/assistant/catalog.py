@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.assistant.permissions import allowed_tool_names
-from app.models.entities import User
+from app.models.entities import User, UserRole
 
 
 @dataclass(frozen=True)
@@ -105,10 +105,50 @@ _CATALOG: tuple[CatalogAction, ...] = (
 )
 
 
+_INSTAGRAM_CATALOG: tuple[CatalogAction, ...] = (
+    CatalogAction(
+        id="ig_overview",
+        title="Resumen del inbox IG",
+        description="Cantidad de conversaciones, estados y actividad reciente.",
+        starter_message=(
+            "Dame un resumen del inbox de Instagram: "
+            "cuántas conversaciones hay, cómo están (abiertas, esperando humano, resueltas) "
+            "y qué se ve de actividad reciente."
+        ),
+        category="query",
+        required_tools=frozenset({"search_conversation"}),
+    ),
+    CatalogAction(
+        id="ig_habits",
+        title="Mensajes más habituales",
+        description="Qué tipo de mensajes se repiten (saludos, consultas, etc.).",
+        starter_message=(
+            "Mirando los mensajes de Instagram del inbox, "
+            "¿qué tipo de mensaje es más habitual? "
+            "Agrupá por ideas (saludo, consulta, pedido, spam u otros) y dale ejemplos cortos."
+        ),
+        category="query",
+        required_tools=frozenset({"search_conversation"}),
+    ),
+    CatalogAction(
+        id="ig_search",
+        title="Buscar chat IG",
+        description="Encontrá una conversación por nombre o estado.",
+        starter_message=(
+            "Quiero buscar una conversación de Instagram. "
+            "Preguntame nombre o estado y mostrame lo que encuentres."
+        ),
+        category="query",
+        required_tools=frozenset({"search_conversation"}),
+    ),
+)
+
+
 def catalog_for_user(user: User) -> list[dict]:
     allowed = allowed_tool_names(user)
+    source = _INSTAGRAM_CATALOG if user.role == UserRole.MUESTRA_INSTA else _CATALOG
     items: list[dict] = []
-    for action in _CATALOG:
+    for action in source:
         if not action.required_tools.issubset(allowed):
             continue
         items.append(

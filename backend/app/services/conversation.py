@@ -210,13 +210,20 @@ async def get_conversation_with_relations(db: AsyncSession, conversation_id: UUI
     return await db.scalar(stmt)
 
 
-async def list_conversations(db: AsyncSession, limit: int = 50) -> list[Conversation]:
+async def list_conversations(
+    db: AsyncSession,
+    limit: int = 50,
+    *,
+    channel: Channel | None = None,
+) -> list[Conversation]:
     stmt = (
         select(Conversation)
         .options(selectinload(Conversation.contact), selectinload(Conversation.tags))
         .order_by(Conversation.updated_at.desc())
         .limit(limit)
     )
+    if channel is not None:
+        stmt = stmt.where(Conversation.channel == channel)
     result = await db.scalars(stmt)
     return list(result.all())
 

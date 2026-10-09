@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.models.entities import User, UserRole
 
-# Tools de lectura: todos los roles autenticados del panel.
+# Tools de lectura: admin y consejo (dominio + inbox).
 READ_TOOLS = frozenset(
     {
         "search_organization",
@@ -15,6 +15,9 @@ READ_TOOLS = frozenset(
     }
 )
 
+# Demo Instagram: solo inbox del canal Instagram.
+MUESTRA_INSTA_TOOLS = frozenset({"search_conversation"})
+
 # Tools que preparan acciones (siempre requieren confirmación UX).
 ACTION_TOOLS = frozenset(
     {
@@ -24,19 +27,10 @@ ACTION_TOOLS = frozenset(
     }
 )
 
-ADMIN_ONLY_ACTIONS = frozenset(
-    {
-        "prepare_email",
-        "prepare_suspend_agreement",
-        "prepare_activate_agreement",
-        "execute_send_email",
-        "execute_suspend_agreement",
-        "execute_activate_agreement",
-    }
-)
-
 
 def allowed_tool_names(user: User) -> set[str]:
+    if user.role == UserRole.MUESTRA_INSTA:
+        return set(MUESTRA_INSTA_TOOLS)
     names = set(READ_TOOLS)
     if user.role == UserRole.ADMIN:
         names |= ACTION_TOOLS
@@ -44,6 +38,8 @@ def allowed_tool_names(user: User) -> set[str]:
 
 
 def can_execute_action(user: User, action: str) -> bool:
+    if user.role == UserRole.MUESTRA_INSTA:
+        return False
     if action in {"send_email", "suspend_agreement", "activate_agreement"}:
         return user.role == UserRole.ADMIN
     return False

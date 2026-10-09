@@ -36,11 +36,21 @@ async def _ensure_channel_enum_values(conn) -> None:
             logger.debug("channel enum %s: %s", value, exc)
 
 
+async def _ensure_userrole_enum_values(conn) -> None:
+    """Agrega roles nuevos al enum PostgreSQL userrole."""
+    for value in ("muestra_insta", "MUESTRA_INSTA"):
+        try:
+            await conn.execute(text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{value}'"))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("userrole enum %s: %s", value, exc)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_channel_enum_values(conn)
+        await _ensure_userrole_enum_values(conn)
 
     async with async_session() as session:
         await seed_default_tags(session)

@@ -13,14 +13,14 @@ from app.assistant.tools.base import ToolContext
 from app.assistant.tools.registry import get_tool, openai_tools_for_user
 from app.domain.factory import get_domain_repository
 from app.models.domain import ActionProposal, ActionProposalStatus
-from app.models.entities import User
+from app.models.entities import User, UserRole
 from app.services.deepseek import ChatCompletionResult, complete_chat_with_tools
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 6
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT_CIRCULO = """\
 Sos el agente operativo del círculo médico (Conversa Platform).
 Hablás en español rioplatense, claro y breve.
 
@@ -41,17 +41,45 @@ Reglas:
 - Si te preguntan algo del inbox, usá search_conversation.
 """
 
+SYSTEM_PROMPT_INSTAGRAM = """\
+Sos un asistente de un creador o creadora de contenido de Instagram.
+Hablás en español rioplatense, claro, amable y breve.
+
+Tu trabajo es ayudar a entender las conversaciones del inbox de Instagram:
+cantidad de chats o mensajes, fechas, quién escribió, estados (abierta, esperando humano, resuelta)
+y qué tipo de mensaje es más habitual (saludos, consultas, spam, etc.), según el recorte
+de mensajes que te pasan y la tool search_conversation.
+
+Reglas:
+- Solo usás información de Instagram. No inventes chats ni cifras.
+- No hables de obras sociales, convenios, médicos ni del círculo médico.
+- No envíes mensajes a Instagram ni tomes chats desde acá: eso se hace en el Inbox.
+- Respondé en frases cortas, sin jerga técnica ni ids, salvo que te los pidan.
+- Si no alcanza la información, decilo con naturalidad.
+"""
+
+
+def system_prompt_for_user(user: User) -> str:
+    if user.role == UserRole.MUESTRA_INSTA:
+        return SYSTEM_PROMPT_INSTAGRAM
+    return SYSTEM_PROMPT_CIRCULO
+
 
 async def run_agent_turn(
     db: AsyncSession,
     user: User,
     thread_id: UUID,
     history: list[dict[str, str]],
+    *,
+    inbox_context: str | None = None,
 ) -> tuple[str, ActionProposal | None]:
     """Ejecuta el loop del agente. Devuelve (texto_respuesta, propuesta_opcional)."""
 
     tools = openai_tools_for_user(user)
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    system = system_prompt_for_user(user)
+    if inbox_context:
+        system = f"{system}\n\nInformación del inbox de Instagram:\n{inbox_context}"
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system}, *history]
     domain = get_domain_repository(db)
     ctx = ToolContext(db=db, user=user, domain=domain, thread_id=thread_id)
     pending_proposal: ActionProposal | None = None

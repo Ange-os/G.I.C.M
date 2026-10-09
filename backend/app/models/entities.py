@@ -36,6 +36,7 @@ class SenderType(str, enum.Enum):
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     CONSEJO = "consejo"
+    MUESTRA_INSTA = "muestra_insta"
 
 
 class AssistantRole(str, enum.Enum):
