@@ -40,6 +40,8 @@ async def persist_instagram_inbound(
     text: str | None,
     external_id: str | None,
     contact_name: str | None = None,
+    username: str | None = None,
+    profile_pic: str | None = None,
     raw: dict | None = None,
     page_outbound: bool = False,
     role: str | None = None,
@@ -71,7 +73,14 @@ async def persist_instagram_inbound(
         direction = MessageDirection.INBOUND
         sender_type = SenderType.CONTACT
 
-    contact = await get_or_create_instagram_contact(db, contact_igsid, name=contact_name)
+    # En ecos (respuesta del bot) no suele venir el perfil del usuario.
+    contact = await get_or_create_instagram_contact(
+        db,
+        contact_igsid,
+        name=contact_name if not page_outbound else None,
+        username=username if not page_outbound else None,
+        picture=profile_pic if not page_outbound else None,
+    )
     conversation = await get_open_conversation(db, contact.id, channel=Channel.INSTAGRAM)
 
     meta_base = {

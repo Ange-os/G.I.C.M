@@ -17,12 +17,32 @@ class InstagramN8nInbound(BaseModel):
     # contact = usuario; bot/agent = respuesta de la página (espejo en Inbox)
     role: str | None = None
     contact_name: str | None = Field(default=None, alias="contactName")
+    # Perfil Graph (n8n: Obtener Perfil → name / username / profile_pic | profilePic)
+    name: str | None = None
+    username: str | None = None
+    profile_pic: str | None = Field(default=None, alias="profilePic")
 
     model_config = {"populate_by_name": True}
 
     def resolved_external_id(self) -> str | None:
         value = self.external_id or self.mid
         return value.strip() if value else None
+
+    def resolved_display_name(self) -> str | None:
+        for value in (self.contact_name, self.name, self.username):
+            if value and str(value).strip():
+                return str(value).strip()
+        return None
+
+    def resolved_username(self) -> str | None:
+        if self.username and self.username.strip():
+            return self.username.strip().lstrip("@")
+        return None
+
+    def resolved_profile_pic(self) -> str | None:
+        if self.profile_pic and self.profile_pic.strip():
+            return self.profile_pic.strip()
+        return None
 
     def is_page_outbound(self) -> bool:
         """Respuesta de la página / Agent (echo) hacia el usuario."""

@@ -4,6 +4,9 @@ import { useRoute, useRouter } from "vue-router";
 import {
   type Conversation,
   type Message,
+  contactPicture,
+  contactUsername,
+  displayContact,
   fetchConversation,
   fetchConversations,
   fetchMessages,
@@ -56,6 +59,21 @@ const replyDisabledReason = computed(() => {
 const handlingLabel = computed(() =>
   isBotOff.value ? "Atención humana" : "Atención automática",
 );
+
+const selectedPicture = computed(() =>
+  selectedConversation.value ? contactPicture(selectedConversation.value) : null,
+);
+const selectedUsername = computed(() =>
+  selectedConversation.value ? contactUsername(selectedConversation.value) : null,
+);
+const selectedInitials = computed(() => {
+  if (!selectedConversation.value) return "?";
+  const label = displayContact(selectedConversation.value).trim();
+  const parts = label.replace(/^@/, "").split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+});
 
 const filteredConversations = computed(() => {
   if (channelFilter.value === "all") return conversations.value;
@@ -279,20 +297,32 @@ onUnmounted(() => {
 
       <template v-else-if="selectedConversation">
         <header class="inbox__main-header">
-          <div>
-            <h2>
-              {{ selectedConversation.contact?.name || selectedConversation.contact?.phone }}
-            </h2>
-            <p class="inbox__handling-line">
-              <span class="channel">{{ channelLabel(selectedConversation.channel) }}</span>
-              ·
-              <span
-                class="handling"
-                :class="isBotOff ? 'handling--human' : 'handling--auto'"
-              >
-                {{ handlingLabel }}
-              </span>
-            </p>
+          <div class="inbox__contact-heading">
+            <div class="contact-avatar contact-avatar--lg" aria-hidden="true">
+              <img
+                v-if="selectedPicture"
+                :src="selectedPicture"
+                alt=""
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+              <span v-else>{{ selectedInitials }}</span>
+            </div>
+            <div>
+              <h2>{{ displayContact(selectedConversation) }}</h2>
+              <p class="inbox__handling-line">
+                <span v-if="selectedUsername" class="inbox__handle">@{{ selectedUsername }}</span>
+                <span v-if="selectedUsername"> · </span>
+                <span class="channel">{{ channelLabel(selectedConversation.channel) }}</span>
+                ·
+                <span
+                  class="handling"
+                  :class="isBotOff ? 'handling--human' : 'handling--auto'"
+                >
+                  {{ handlingLabel }}
+                </span>
+              </p>
+            </div>
           </div>
           <div class="inbox__header-actions">
             <div class="inbox__main-tags">

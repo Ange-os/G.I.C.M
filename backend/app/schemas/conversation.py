@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.entities import (
     Channel,
@@ -21,6 +21,37 @@ class ContactRead(BaseModel):
     phone: str
     name: str | None
     created_at: datetime
+    picture: str | None = None
+    username: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _pull_profile_from_metadata(cls, data: object) -> object:
+        if hasattr(data, "metadata_"):
+            meta = getattr(data, "metadata_", None) or {}
+            return {
+                "id": data.id,
+                "phone": data.phone,
+                "name": data.name,
+                "created_at": data.created_at,
+                "picture": meta.get("picture") if isinstance(meta, dict) else None,
+                "username": (
+                    (meta.get("instagram_username") or meta.get("username"))
+                    if isinstance(meta, dict)
+                    else None
+                ),
+            }
+        if isinstance(data, dict):
+            meta = data.get("metadata_") or data.get("metadata") or {}
+            if isinstance(meta, dict):
+                return {
+                    **data,
+                    "picture": data.get("picture") or meta.get("picture"),
+                    "username": data.get("username")
+                    or meta.get("instagram_username")
+                    or meta.get("username"),
+                }
+        return data
 
 
 class TagRead(BaseModel):

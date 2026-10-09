@@ -83,6 +83,8 @@ export interface Contact {
   id: string;
   phone: string;
   name: string | null;
+  picture?: string | null;
+  username?: string | null;
 }
 
 export interface Tag {
@@ -356,10 +358,23 @@ export function formatDateTime(value: string) {
 export function displayContact(conversation: Conversation) {
   const name = conversation.contact?.name;
   if (name) return name;
+  const username = conversation.contact?.username;
+  if (username) return `@${username.replace(/^@/, "")}`;
   const phone = conversation.contact?.phone;
   if (phone?.startsWith("ig:")) return `Instagram ${phone.slice(3, 9)}…`;
   if (phone?.startsWith("web:")) return `Web ${phone.slice(4, 10)}…`;
   return phone || "Sin contacto";
+}
+
+export function contactPicture(conversation: Conversation) {
+  const pic = conversation.contact?.picture?.trim();
+  return pic || null;
+}
+
+export function contactUsername(conversation: Conversation) {
+  const username = conversation.contact?.username?.trim();
+  if (!username) return null;
+  return username.replace(/^@/, "");
 }
 
 export function hasTag(conversation: Conversation, tagName: string) {

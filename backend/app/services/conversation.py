@@ -52,30 +52,58 @@ def instagram_contact_key(sender_id: str) -> str:
     return "ig:" + hashlib.sha1(sender_id.encode("utf-8")).hexdigest()[:29]
 
 
+def _instagram_placeholder_name(name: str | None) -> bool:
+    if not name or not name.strip():
+        return True
+    return name.strip().startswith("IG ")
+
+
 async def get_or_create_instagram_contact(
     db: AsyncSession,
     sender_id: str,
     name: str | None = None,
+    *,
+    username: str | None = None,
+    picture: str | None = None,
 ) -> Contact:
     sender_id = sender_id.strip()
     if not sender_id:
         raise ValueError("sender_id de Instagram vacío")
 
+    display = (name or "").strip() or None
+    handle = (username or "").strip().lstrip("@") or None
+    pic = (picture or "").strip() or None
+    if not display and handle:
+        display = handle
+
     key = instagram_contact_key(sender_id)
     contact = await db.scalar(select(Contact).where(Contact.phone == key))
     if contact:
         meta = dict(contact.metadata_ or {})
-        if meta.get("instagram_sender_id") != sender_id:
-            meta["instagram_sender_id"] = sender_id
-            contact.metadata_ = meta
-        if name and not contact.name:
-            contact.name = name
+        meta["instagram_sender_id"] = sender_id
+        meta["channel"] = "instagram"
+        if handle:
+            meta["instagram_username"] = handle
+        if pic:
+            meta["picture"] = pic
+        contact.metadata_ = meta
+        if display and (
+            _instagram_placeholder_name(contact.name)
+            or (handle and contact.name == handle and display != handle)
+        ):
+            contact.name = display
         return contact
+
+    meta = {"instagram_sender_id": sender_id, "channel": "instagram"}
+    if handle:
+        meta["instagram_username"] = handle
+    if pic:
+        meta["picture"] = pic
 
     contact = Contact(
         phone=key,
-        name=name or f"IG {sender_id[-6:]}",
-        metadata_={"instagram_sender_id": sender_id, "channel": "instagram"},
+        name=display or (handle or f"IG {sender_id[-6:]}"),
+        metadata_=meta,
     )
     db.add(contact)
     await db.flush()
